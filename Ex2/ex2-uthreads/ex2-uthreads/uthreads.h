@@ -12,6 +12,7 @@
 #define STACK_SIZE 4096 /* stack size per thread (in bytes) */
 
 typedef void (*thread_entry_point)(void);
+using thread_id = unsigned int;
 
 /* External interface */
 
