@@ -92,6 +92,14 @@ int uthread_get_tid()
 	});
 }
 
+int uthread_get_total_quantums()
+{
+	return safe_library_call([]
+	{
+		return global_uthread_manager::get_instance().get_total_elapsed_quantums();
+	});
+}
+
 int uthread_get_quantums(int tid)
 {
 	return safe_library_call([tid]

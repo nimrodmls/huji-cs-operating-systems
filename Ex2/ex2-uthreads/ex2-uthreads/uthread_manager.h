@@ -68,16 +68,18 @@ public:
 	void resume(thread_id tid);
 	// Switches the RUNNING thread to sleep mode
 	void sleep(int sleep_quantums);
-	// Switching from the currently running thread to the next ready thread
-	void switch_threads(bool is_blocked, bool terminate_running);
 
 	// Getters
 	thread_id get_tid() const;
+	int get_total_elapsed_quantums() const { return elapsed_quantums; }
 	int get_elapsed_quantums(thread_id tid) const;
 
 	static constexpr int MAIN_THREAD_ID = 0;
 
 private:
+
+	// Switching from the currently running thread to the next ready thread
+	void switch_threads(bool is_blocked, bool terminate_running);
 
 	// The quantum timer signal handler. It is responsible for
 	// switching between threads, and waking up sleeping threads.
@@ -85,6 +87,7 @@ private:
 
 	// The length of each quantum in microseconds
 	int quantum_usecs_interval;
+	int elapsed_quantums;
 	// Storing all the threads that are ready to run, as a queue,
 	// the threads will be run in a FIFO order
 	std::deque<thread_id> ready_threads;

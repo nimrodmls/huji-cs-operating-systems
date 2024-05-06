@@ -59,7 +59,7 @@ thread::thread(thread_id id, thread_entry_point ep) :
 }
 
 thread::thread(thread_id id) :
-    id(id), env_blk(), stack(), state(RUNNING), sleep_time(0), elapsed_quantums(0)
+    id(id), env_blk(), stack(), state(RUNNING), sleep_time(0), elapsed_quantums(1)
 {
     // return value omitted, as this is only initialization
     (void)sigsetjmp(env_blk, 1);
@@ -78,18 +78,18 @@ int thread::pause(bool is_blocked)
     int jmp_val = sigsetjmp(env_blk, 1);
     if (PAUSED == jmp_val)
     {
-	    state = RUNNING;
-    }
-    else
-    {
         if (is_blocked)
         {
-	        state = BLOCKED;
+            state = BLOCKED;
         }
-		else
-		{
-			state = READY;
-		}
+        else
+        {
+            state = READY;
+        }
+    }
+    else // RESUMED
+    {
+        state = RUNNING;
     }
     return jmp_val;
 }

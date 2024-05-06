@@ -20,7 +20,8 @@ void ctx_switch_mutex::enable_ctx_switch()
 }
 
 uthread_manager::uthread_manager(int quantum_usecs) :
-	quantum_usecs_interval(quantum_usecs)
+	quantum_usecs_interval(quantum_usecs),
+	elapsed_quantums(1)
 {
 	// Non-positive quantum_usecs is considered an error
 	if (quantum_usecs <= 0)
@@ -34,6 +35,7 @@ void uthread_manager::init_main_thread()
 	try
 	{
 		threads.emplace(MAIN_THREAD_ID, std::make_shared<thread>(MAIN_THREAD_ID));
+		running_thread = threads.at(MAIN_THREAD_ID);
 	}
 	catch (const std::bad_alloc&)
 	{
@@ -239,6 +241,7 @@ void uthread_manager::sigvtalrm_handler(int sig_num)
 	// Switching the currently active thread with the next ready thread
 	auto mutex = ctx_switch_mutex();
 	global_uthread_manager::get_instance().switch_threads(false, false);
+	global_uthread_manager::get_instance().elapsed_quantums++;
 	global_uthread_manager::get_instance().running_thread->increment_elapsed_quantums();
 }
 
