@@ -73,10 +73,10 @@ private:
 	// The number of elapsed quantums since the library was initialized
 	int elapsed_quantums;
 	// All the currently sleeping threads
-	std::vector<std::shared_ptr<thread>> sleeper_threads;
+	std::vector<thread_id> sleeper_threads;
 	// Storing all the threads that are ready to run, as a queue,
 	// the threads will be run in a FIFO order
-	std::queue<std::shared_ptr<thread>> ready_threads;
+	std::deque<thread_id> ready_threads;
 	// The current running thread
 	std::shared_ptr<thread> running_thread;
 	// Storing all the active threads (on all states)

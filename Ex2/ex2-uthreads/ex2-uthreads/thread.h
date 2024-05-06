@@ -11,6 +11,13 @@ enum pause_state : int
 	RESUMED
 };
 
+enum thread_state : int
+{
+	READY,
+	RUNNING,
+	BLOCKED
+};
+
 /* Represents a thread in the User-Threads Library */
 class thread
 {
@@ -26,7 +33,10 @@ public:
 	// Pause the thread. Returns pause_state::PAUSED if the thread was paused successfully,
 	// returns pause_state::RESUMED if the thread was resumed, thus continuing its execution
 	// from the point it was paused
-	int pause();
+	int pause(bool is_blocked);
+
+	thread_state get_state() const { return state; }
+	void set_state(thread_state new_state) { state = new_state;  }
 
 	unsigned int get_id() const { return id; }
 
@@ -37,6 +47,7 @@ private:
 	// The environment block of the thread
 	sigjmp_buf env_blk;
 	char stack[STACK_SIZE];
+	thread_state state;
 };
 
 #endif // THREAD_H

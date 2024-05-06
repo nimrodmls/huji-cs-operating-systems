@@ -60,10 +60,52 @@ void uthread_manager::terminate(thread_id tid)
 
 void uthread_manager::block(thread_id tid)
 {
+	if (MAIN_THREAD_ID == tid)
+	{
+		throw uthread_exception("cannot block the main thread");
+	}
+
+	if (tid == running_thread->get_id())
+	{
+		// The running thread is blocking itself, we should switch to the next thread
+		switch_threads(true);
+	}
+	else
+	{
+		// Looking up the thread
+		const auto thread = threads.find(tid);
+		if (thread == threads.end())
+		{
+			throw uthread_exception("thread id not found");
+		}
+		// If the thread was found, looking for it in the ready queue and erasing it
+		auto find_result = 
+			std::find(ready_threads.begin(), ready_threads.end(), thread->second);
+		if (find_result != ready_threads.end())
+		{
+			ready_threads.erase(find_result);
+			find_result->get()->set_state(BLOCKED);
+		}
+	}
 }
 
 void uthread_manager::resume(thread_id tid)
 {
+	// Looking up the thread
+	const auto thread = threads.find(tid);
+	if (thread == threads.end())
+	{
+		throw uthread_exception("thread id not found");
+	}
+
+	sleeper_threads
+
+	// If the thread is ready or running, we ignore the resume request
+	// Otherwise we add it to the ready queue
+	if (BLOCKED == thread->second->get_state())
+	{
+		ready_threads.push_back(thread->second);
+	}
 }
 
 void uthread_manager::sleep(thread_id tid)
@@ -72,24 +114,25 @@ void uthread_manager::sleep(thread_id tid)
 
 void uthread_manager::switch_threads(bool is_blocked)
 {
-	int paused = running_thread->pause();
-	// Checking if the thread has been successfully paused
+	int paused = running_thread->pause(is_blocked);
+	// The thread has been paused, we should switch to the next thread
+	// in the ready queue
 	if (pause_state::PAUSED == paused)
 	{
-		// The thread has been paused, we should switch to the next thread
-		// in the ready queue
-
+		// Pushing the paused thread to the end of the queue, only if the switching
+		// was not triggered by a block
 		if (!is_blocked)
 		{
-			// Pushing the paused thread to the end of the queue
-			ready_threads.push(running_thread); 
+			ready_threads.push_back(running_thread); 
 		}
 		
 		running_thread = ready_threads.front(); // Getting the next thread to run
-		ready_threads.pop(); // Removing the thread from the queue
+		ready_threads.pop_front(); // Removing the thread from the queue
 		running_thread->run(); // Running the thread
 	}
-	// otherwise the thread has been resumed, and we should continue running it
+	// otherwise the thread has been resumed, and we should continue running it.
+	// Updating the running thead would not be necessary since we already do so
+	// in the pause handling.
 }
 
 thread_id uthread_manager::get_tid() const

@@ -43,7 +43,7 @@ address_t translate_address(address_t addr)
 #endif
 
 thread::thread(thread_id id, thread_entry_point ep) :
-	id(id), env_blk(), stack()
+	id(id), env_blk(), stack(), state(READY)
 {
     // Initializes environment block to use the right stack,
     // and to run from the function 'entry_point',
@@ -59,7 +59,7 @@ thread::thread(thread_id id, thread_entry_point ep) :
 }
 
 thread::thread(thread_id id) :
-	id(id), env_blk(), stack()
+	id(id), env_blk(), stack(), state(RUNNING)
 {
     // return value omitted, as this is only initialization
     (void)sigsetjmp(env_blk, 1);
@@ -67,12 +67,29 @@ thread::thread(thread_id id) :
 
 void thread::run()
 {
+    state = RUNNING;
     // Starts the thread by jumping into the environment block
 	// that was initialized in the constructor.
-	siglongjmp(env_blk, pause_state::RESUMED);
+	siglongjmp(env_blk, RESUMED);
 }
 
-int thread::pause()
+int thread::pause(bool is_blocked)
 {
-    return sigsetjmp(env_blk, 1);
+    int jmp_val = sigsetjmp(env_blk, 1);
+    if (PAUSED == jmp_val)
+    {
+	    state = RUNNING;
+    }
+    else
+    {
+        if (is_blocked)
+        {
+	        state = BLOCKED;
+        }
+		else
+		{
+			state = READY;
+		}
+    }
+    return jmp_val;
 }
