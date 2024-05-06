@@ -20,8 +20,7 @@ void ctx_switch_mutex::enable_ctx_switch()
 }
 
 uthread_manager::uthread_manager(int quantum_usecs) :
-	quantum_usecs_interval(quantum_usecs),
-	elapsed_quantums(1)
+	quantum_usecs_interval(quantum_usecs)
 {
 	// Non-positive quantum_usecs is considered an error
 	if (quantum_usecs <= 0)
@@ -216,12 +215,22 @@ void uthread_manager::switch_threads(bool is_blocked, bool terminate_running)
 
 thread_id uthread_manager::get_tid() const
 {
+	auto mutex = ctx_switch_mutex();
+
 	return running_thread->get_id();
 }
 
-int uthread_manager::get_elapsed_quantums() const
+int uthread_manager::get_elapsed_quantums(thread_id tid) const
 {
-	return elapsed_quantums;
+	auto mutex = ctx_switch_mutex();
+
+	const auto thread = threads.find(tid);
+	if (thread == threads.end())
+	{
+		throw uthread_exception("thread id not found");
+	}
+
+	return thread->second->get_elapsed_quantums();
 }
 
 void uthread_manager::sigvtalrm_handler(int sig_num)
@@ -230,7 +239,7 @@ void uthread_manager::sigvtalrm_handler(int sig_num)
 	// Switching the currently active thread with the next ready thread
 	auto mutex = ctx_switch_mutex();
 	global_uthread_manager::get_instance().switch_threads(false, false);
-	global_uthread_manager::get_instance().increment_elapsed_quantums();
+	global_uthread_manager::get_instance().running_thread->increment_elapsed_quantums();
 }
 
 void global_uthread_manager::init(int quantum_usecs)

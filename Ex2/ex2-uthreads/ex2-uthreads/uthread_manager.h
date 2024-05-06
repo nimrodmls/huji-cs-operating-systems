@@ -73,9 +73,7 @@ public:
 
 	// Getters
 	thread_id get_tid() const;
-	int get_elapsed_quantums() const;
-
-	void increment_elapsed_quantums() { elapsed_quantums++; }
+	int get_elapsed_quantums(thread_id tid) const;
 
 	static constexpr int MAIN_THREAD_ID = 0;
 
@@ -87,8 +85,6 @@ private:
 
 	// The length of each quantum in microseconds
 	int quantum_usecs_interval;
-	// The number of elapsed quantums since the library was initialized
-	int elapsed_quantums;
 	// Storing all the threads that are ready to run, as a queue,
 	// the threads will be run in a FIFO order
 	std::deque<thread_id> ready_threads;

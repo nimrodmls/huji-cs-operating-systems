@@ -35,6 +35,9 @@ public:
 	// from the point it was paused
 	int pause(bool is_blocked);
 
+	void increment_elapsed_quantums() { elapsed_quantums++; }
+	int get_elapsed_quantums() const { return elapsed_quantums; }
+
 	thread_state get_state() const { return state; }
 	void set_state(thread_state new_state) { state = new_state;  }
 
@@ -52,6 +55,7 @@ private:
 	char stack[STACK_SIZE];
 	thread_state state;
 	int sleep_time;
+	int elapsed_quantums;
 };
 
 #endif // THREAD_H
