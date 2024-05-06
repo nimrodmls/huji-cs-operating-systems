@@ -5,18 +5,32 @@
 
 #include "uthreads.h"
 
+enum pause_state : int
+{
+	PAUSED,
+	RESUMED
+};
+
 /* Represents a thread in the User-Threads Library */
 class thread
 {
 public:
-	thread(unsigned int id, thread_entry_point ep);
+	// Constructor for regular user thread
+	thread(thread_id id, thread_entry_point ep);
+	// Constructor for thread forked from the current thread,
+	// unlike starting from a whole new EP (primarily for the main thread)
+	thread(thread_id id);
 
-	void start();
+	// Start/Continue running the thread
+	void run();
+	// Pause the thread. Returns pause_state::PAUSED if the thread was paused successfully,
+	// returns pause_state::RESUMED if the thread was resumed, thus continuing its execution
+	// from the point it was paused
+	int pause();
 
 	unsigned int get_id() const { return id; }
-	
+
 private:
-	static const int JMP_RET_VAL = 1;
 
 	// The thread's ID (TID)
 	unsigned int id;

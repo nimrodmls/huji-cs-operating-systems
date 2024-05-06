@@ -42,7 +42,7 @@ address_t translate_address(address_t addr)
 
 #endif
 
-thread::thread(unsigned int id, thread_entry_point ep) :
+thread::thread(thread_id id, thread_entry_point ep) :
 	id(id), env_blk(), stack()
 {
     // Initializes environment block to use the right stack,
@@ -51,15 +51,28 @@ thread::thread(unsigned int id, thread_entry_point ep) :
     // * This code has been adapted from the code provided in the exercise *
     address_t sp = reinterpret_cast<address_t>(stack + STACK_SIZE - sizeof(address_t));
     address_t pc = reinterpret_cast<address_t>(ep);
-    sigsetjmp(env_blk, 1);
+    // return value omitted, as this is only initialization
+    (void)sigsetjmp(env_blk, 1);
     (env_blk->__jmpbuf)[JB_SP] = translate_address(sp);
     (env_blk->__jmpbuf)[JB_PC] = translate_address(pc);
-    sigemptyset(&env_blk->__saved_mask);
+    (void)sigemptyset(&env_blk->__saved_mask);
 }
 
-void thread::start()
+thread::thread(thread_id id) :
+	id(id), env_blk(), stack()
+{
+    // return value omitted, as this is only initialization
+    (void)sigsetjmp(env_blk, 1);
+}
+
+void thread::run()
 {
     // Starts the thread by jumping into the environment block
 	// that was initialized in the constructor.
-	siglongjmp(env_blk, JMP_RET_VAL);
+	siglongjmp(env_blk, pause_state::RESUMED);
+}
+
+int thread::pause()
+{
+    return sigsetjmp(env_blk, 1);
 }
