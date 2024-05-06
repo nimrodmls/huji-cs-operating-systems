@@ -38,6 +38,9 @@ public:
 	thread_state get_state() const { return state; }
 	void set_state(thread_state new_state) { state = new_state;  }
 
+	int get_sleep_time() const { return sleep_time;  }
+	void set_sleep_time(int time) { sleep_time = time; }
+
 	unsigned int get_id() const { return id; }
 
 private:
@@ -48,6 +51,7 @@ private:
 	sigjmp_buf env_blk;
 	char stack[STACK_SIZE];
 	thread_state state;
+	int sleep_time;
 };
 
 #endif // THREAD_H

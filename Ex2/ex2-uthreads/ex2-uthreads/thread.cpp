@@ -43,7 +43,7 @@ address_t translate_address(address_t addr)
 #endif
 
 thread::thread(thread_id id, thread_entry_point ep) :
-	id(id), env_blk(), stack(), state(READY)
+	id(id), env_blk(), stack(), state(READY), sleep_time(0)
 {
     // Initializes environment block to use the right stack,
     // and to run from the function 'entry_point',
@@ -59,7 +59,7 @@ thread::thread(thread_id id, thread_entry_point ep) :
 }
 
 thread::thread(thread_id id) :
-	id(id), env_blk(), stack(), state(RUNNING)
+	id(id), env_blk(), stack(), state(RUNNING), sleep_time(0)
 {
     // return value omitted, as this is only initialization
     (void)sigsetjmp(env_blk, 1);

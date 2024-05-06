@@ -4,6 +4,7 @@
 #include <map>
 #include <memory>
 #include <queue>
+#include <set>
 
 #include "thread.h"
 #include "uthreads.h"
@@ -35,6 +36,21 @@ private:
 	std::string message;
 };
 
+/* RAII class for disabling and enabling context switching */
+class ctx_switch_mutex
+{
+public:
+	ctx_switch_mutex() { disable_ctx_switch(); }
+	~ctx_switch_mutex() { enable_ctx_switch(); }
+
+	ctx_switch_mutex(const ctx_switch_mutex&) = delete;
+	ctx_switch_mutex operator=(const ctx_switch_mutex&) = delete;
+
+private:
+	static void disable_ctx_switch();
+	static void enable_ctx_switch();
+};
+
 class uthread_manager
 {
 public:
@@ -50,9 +66,10 @@ public:
 	void terminate(thread_id tid);
 	void block(thread_id tid);
 	void resume(thread_id tid);
-	void sleep(thread_id tid);
+	// Switches the RUNNING thread to sleep mode
+	void sleep(int sleep_quantums);
 	// Switching from the currently running thread to the next ready thread
-	void switch_threads(bool is_blocked);
+	void switch_threads(bool is_blocked, bool terminate_running);
 
 	// Getters
 	thread_id get_tid() const;
@@ -72,8 +89,6 @@ private:
 	int quantum_usecs_interval;
 	// The number of elapsed quantums since the library was initialized
 	int elapsed_quantums;
-	// All the currently sleeping threads
-	std::vector<thread_id> sleeper_threads;
 	// Storing all the threads that are ready to run, as a queue,
 	// the threads will be run in a FIFO order
 	std::deque<thread_id> ready_threads;
