@@ -7,7 +7,7 @@
 
 enum pause_state : int
 {
-	PAUSED,
+	SUSPENDED,
 	RESUMED
 };
 
@@ -30,10 +30,10 @@ public:
 
 	// Start/Continue running the thread
 	void run();
-	// Pause the thread. Returns pause_state::PAUSED if the thread was paused successfully,
+	// Pause the thread. Returns pause_state::SUSPENDED if the thread was paused successfully,
 	// returns pause_state::RESUMED if the thread was resumed, thus continuing its execution
 	// from the point it was paused
-	int pause(bool is_blocked);
+	int suspend(bool is_blocked);
 
 	void increment_elapsed_quantums() { elapsed_quantums++; }
 	int get_elapsed_quantums() const { return elapsed_quantums; }
@@ -44,14 +44,15 @@ public:
 	int get_sleep_time() const { return sleep_time;  }
 	void set_sleep_time(int time) { sleep_time = time; }
 
+	sigjmp_buf& get_env_block() { return env_blk; }
+	sigjmp_buf env_blk;
+
 	unsigned int get_id() const { return id; }
 
 private:
 
-	// The thread's ID (TID)
-	unsigned int id;
+	thread_id id;
 	// The environment block of the thread
-	sigjmp_buf env_blk;
 	char stack[STACK_SIZE];
 	thread_state state;
 	int sleep_time;

@@ -95,6 +95,7 @@ private:
 	std::shared_ptr<thread> running_thread;
 	// Storing all the active threads (on all states)
 	std::map<thread_id, std::shared_ptr<thread>> threads;
+	sigjmp_buf env[3];
 };
 
 // Singleton-type class for storing the singular instance of uthread_manager.

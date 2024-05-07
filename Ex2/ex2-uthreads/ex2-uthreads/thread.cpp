@@ -68,28 +68,12 @@ thread::thread(thread_id id) :
 void thread::run()
 {
     state = RUNNING;
-    // Starts the thread by jumping into the environment block
-	// that was initialized in the constructor.
+    // Starts the thread by jumping using the environment block
+	// that was set when thread has been initialized/paused.
 	siglongjmp(env_blk, RESUMED);
 }
 
-int thread::pause(bool is_blocked)
+int thread::suspend(bool is_blocked)
 {
-    int jmp_val = sigsetjmp(env_blk, 1);
-    if (PAUSED == jmp_val)
-    {
-        if (is_blocked)
-        {
-            state = BLOCKED;
-        }
-        else
-        {
-            state = READY;
-        }
-    }
-    else // RESUMED
-    {
-        state = RUNNING;
-    }
-    return jmp_val;
+    return sigsetjmp(env_blk, 1);
 }
