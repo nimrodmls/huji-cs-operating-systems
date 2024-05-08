@@ -1,12 +1,27 @@
 #include <iostream>
+#include <memory>
+#include <queue>
 #include <functional>
 #include <signal.h>
 #include <sys/time.h>
+#include <numeric>
 
+#include "thread.h"
 #include "uthreads.h"
-#include "uthread_manager.h"
 
 #define MAIN_THREAD_ID 0
+
+enum return_status : int
+{
+	STATUS_SUCCESS,
+	STATUS_FAILURE
+};
+
+enum suspend_state : int
+{
+	SUSPENDED,
+	RESUMED
+};
 
 /* RAII class for disabling and enabling context switching */
 class ctx_switch_mutex
@@ -41,6 +56,7 @@ struct uthread_mgr
 {
 	int quantum_usecs_interval;
 	int elapsed_quantums;
+	std::priority_queue<thread_id, std::vector<thread_id>, std::greater<>> available_ids;
 	// Storing all the threads that are ready to run, as a queue,
 	// the threads will be run in a FIFO order
 	std::deque<thread_id> ready_threads;
@@ -48,8 +64,6 @@ struct uthread_mgr
 	thread_id running_thread;
 	// Storing all the active threads (on all states)
 	thread* threads[MAX_THREAD_NUM];
-	int thread_cnt;
-	//std::map<thread_id, thread*> threads;
 };
 
 static uthread_mgr g_mgr;
@@ -64,44 +78,48 @@ static void print_system_error(const std::string& msg)
 	std::cerr << "system error: " << msg << std::endl;
 }
 
+static void delete_thread(thread_id tid)
+{
+	delete g_mgr.threads[tid]();
+	g_mgr.available_ids.push(tid);
+}
+
 static void switch_threads(bool is_blocked, bool terminate_running)
 {
-	std::cout << "Switching from " << g_mgr.running_thread << std::endl;
 	const int paused = sigsetjmp(g_mgr.threads[g_mgr.running_thread]->env_blk, 1);
 	// The thread has been paused, we should switch to the next thread
 	// in the ready queue
-	if (pause_state::SUSPENDED == paused)
+	if (suspend_state::SUSPENDED == paused)
 	{
 		// Pushing the paused thread to the end of the queue, only if the switching
 		// was not triggered by a block
 		if (!is_blocked)
 		{
-			g_mgr.threads[g_mgr.running_thread]->set_state(READY);
+			g_mgr.threads[g_mgr.running_thread]->state = READY;
 			g_mgr.ready_threads.push_back(g_mgr.running_thread);
 		}
 		else
 		{
-			g_mgr.threads[g_mgr.running_thread]->set_state(BLOCKED);
+			g_mgr.threads[g_mgr.running_thread]->state = BLOCKED;
 		}
 
 		// If the thread is terminating, we should remove it from the threads map
+		// WE SHOULD NOT REACH HERE DURING SIGNAL HANDLING - SUPER DANGEROUS
 		if (terminate_running)
 		{
-			delete g_mgr.threads[g_mgr.running_thread];
-			g_mgr.threads[g_mgr.running_thread] = nullptr;
+			delete_thread(g_mgr.running_thread);
 		}
 
 		g_mgr.running_thread = g_mgr.ready_threads.front(); // Getting the next thread to run
 		g_mgr.ready_threads.pop_front(); // Removing the thread from the queue
 
-		std::cout << "Switching to " << g_mgr.running_thread << std::endl;
 		siglongjmp(g_mgr.threads[g_mgr.running_thread]->env_blk, RESUMED);
 	}
 	else
 	{
 		const auto running = g_mgr.threads[g_mgr.running_thread];
-		running->set_state(RUNNING);
-		running->increment_elapsed_quantums();
+		running->state = RUNNING;
+		running->elapsed_quantums++;
 	}
 	// otherwise the thread has been resumed, and we should continue running it.
 	// Updating the running thead would not be necessary since we already do so
@@ -110,31 +128,7 @@ static void switch_threads(bool is_blocked, bool terminate_running)
 
 static void sigvtalrm_handler(int sig_num)
 {
-	const int paused = sigsetjmp(g_mgr.threads[g_mgr.running_thread]->env_blk, 1);
-	// The thread has been paused, we should switch to the next thread
-	// in the ready queue
-	if (pause_state::SUSPENDED == paused)
-	{
-		// Pushing the paused thread to the end of the queue, only if the switching
-		// was not triggered by a block
-		g_mgr.threads[g_mgr.running_thread]->set_state(READY);
-		g_mgr.ready_threads.push_back(g_mgr.running_thread);
-
-
-		g_mgr.running_thread = g_mgr.ready_threads.front(); // Getting the next thread to run
-		g_mgr.ready_threads.pop_front(); // Removing the thread from the queue
-
-		siglongjmp(g_mgr.threads[g_mgr.running_thread]->env_blk, RESUMED);
-	}
-	else
-	{
-		const auto running = g_mgr.threads[g_mgr.running_thread];
-		running->set_state(RUNNING);
-		running->increment_elapsed_quantums();
-	}
-	// otherwise the thread has been resumed, and we should continue running it.
-	// Updating the running thead would not be necessary since we already do so
-	// in the suspend handling.
+	switch_threads(false, false);
 	g_mgr.elapsed_quantums++;
 }
 
@@ -144,10 +138,16 @@ int uthread_init(int quantum_usecs)
 	if (quantum_usecs <= 0)
 	{
 		print_library_error("invalid quantum interval value");
-		return -1;
+		return STATUS_FAILURE;
 	}
 
 	g_mgr.quantum_usecs_interval = quantum_usecs;
+	g_mgr.elapsed_quantums = 1;
+
+	// Setting up the available thread IDs
+	std::vector<thread_id> available(MAX_THREAD_NUM-1);
+	std::iota(available.begin(), available.end(), 1);
+	g_mgr.available_ids = std::priority_queue(std::greater(), available);
 
 	// Setting up the main thread
 	thread* main_thread = nullptr;
@@ -158,7 +158,7 @@ int uthread_init(int quantum_usecs)
 	catch (const std::bad_alloc&)
 	{
 		print_system_error("thread allocation failed");
-		return -1;
+		return STATUS_FAILURE;
 	}
 	g_mgr.threads[MAIN_THREAD_ID] = main_thread;
 	g_mgr.running_thread = MAIN_THREAD_ID;
@@ -178,23 +178,23 @@ int uthread_init(int quantum_usecs)
 	if (-1 == setitimer(ITIMER_VIRTUAL, &timer, NULL))
 	{
 		print_system_error("timer setup failed");
-		return -1;
+		return STATUS_FAILURE;
 	}
 
-	return 0;
+	return STATUS_SUCCESS;
 }
 
 int uthread_spawn(thread_entry_point entrypoint)
 {
 	auto mutex = ctx_switch_mutex();
-	if (MAX_THREAD_NUM <= g_mgr.thread_cnt)
+	if (g_mgr.available_ids.empty())
 	{
 		print_library_error("maximum number of threads reached");
-		return -1;
+		return STATUS_FAILURE;
 	}
 
-	g_mgr.thread_cnt++;
-	unsigned int tid = g_mgr.thread_cnt; // TODO: Better way to get a unique id
+	const thread_id tid = g_mgr.available_ids.top();
+	g_mgr.available_ids.pop();
 
 	// Creating the new thread
 	thread* new_thread = nullptr;
@@ -206,13 +206,13 @@ int uthread_spawn(thread_entry_point entrypoint)
 	catch (const std::bad_alloc&)
 	{
 		print_system_error("thread allocation failed");
-		return -1;
+		return STATUS_FAILURE;
 	}
 	// Mapping the new thread and marking it ready
 	g_mgr.threads[tid] = new_thread;
 	g_mgr.ready_threads.push_back(tid);
 
-	return 0;
+	return tid;
 }
 
 int uthread_terminate(int tid)
@@ -229,22 +229,22 @@ int uthread_terminate(int tid)
 	if (nullptr == thread)
 	{
 		print_library_error("thread id not found");
-		return -1;
+		return STATUS_FAILURE;
 	}
 
 	// If the thread is running, we should switch to the next thread and erase this one
-	if (RUNNING == thread->get_state())
+	if (RUNNING == thread->state)
 	{
 		switch_threads(true, true);
 	}
 
 	// If the thread is ready, we should erase it from the ready queue
-	if (READY == thread->get_state())
+	if (READY == thread->state)
 	{
 		const auto find_result =
 			std::find(g_mgr.ready_threads.begin(),
 					g_mgr.ready_threads.end(),
-					  thread->get_id());
+					  thread->id);
 		if (find_result != g_mgr.ready_threads.end())
 		{
 			g_mgr.ready_threads.erase(find_result);
@@ -256,7 +256,7 @@ int uthread_terminate(int tid)
 	delete g_mgr.threads[tid];
 	g_mgr.threads[tid] = nullptr;
 
-	return 0;
+	return STATUS_SUCCESS;
 }
 
 int uthread_block(int tid)
@@ -265,7 +265,7 @@ int uthread_block(int tid)
 	if (MAIN_THREAD_ID == tid)
 	{
 		print_library_error("cannot block the main thread");
-		return -1;
+		return STATUS_FAILURE;
 	}
 
 	if (tid == g_mgr.running_thread)
@@ -280,7 +280,7 @@ int uthread_block(int tid)
 		if (nullptr == thread)
 		{
 			print_library_error("thread id not found");
-			return -1;
+			return STATUS_FAILURE;
 		}
 
 		// If the thread was found, looking for it in the ready queue and erasing it
@@ -289,11 +289,11 @@ int uthread_block(int tid)
 		if (find_result != g_mgr.ready_threads.end())
 		{
 			g_mgr.ready_threads.erase(find_result);
-			g_mgr.threads[tid]->set_state(BLOCKED);
+			g_mgr.threads[tid]->state = BLOCKED;
 		}
 	}
 
-	return 0;
+	return STATUS_SUCCESS;
 }
 
 int uthread_resume(int tid)
@@ -305,19 +305,19 @@ int uthread_resume(int tid)
 	if (nullptr == thread)
 	{
 		print_library_error("thread id not found");
-		return -1;
+		return STATUS_FAILURE;
 	}
 
 	// We resume the thread only if it is blocked and its sleep time has passed
 	// Therefore, resuming READY and RUNNING threads, or BLOCKED threads with
 	// remaining sleep time is not an error, and simply ignored.
-	if ((BLOCKED == thread->get_state()) &&
-		(0 == thread->get_sleep_time()))
+	if ((BLOCKED == thread->state) &&
+		(0 == thread->sleep_time))
 	{
-		g_mgr.ready_threads.push_back(thread->get_id());
+		g_mgr.ready_threads.push_back(thread->id);
 	}
 
-	return 0;
+	return STATUS_SUCCESS;
 }
 
 int uthread_sleep(int num_quantums)
@@ -326,16 +326,16 @@ int uthread_sleep(int num_quantums)
 	if (MAIN_THREAD_ID == g_mgr.running_thread)
 	{
 		print_library_error("cannot sleep the main thread");
-		return -1;
+		return STATUS_FAILURE;
 	}
 
 	// Putting the thread to sleep
-	g_mgr.threads[g_mgr.running_thread]->set_sleep_time(num_quantums);
+	g_mgr.threads[g_mgr.running_thread]->sleep_time = num_quantums;
 	// TODO: Sleep time updating
 	// Switching to the next thread
 	switch_threads(true, false);
 
-	return 0;
+	return STATUS_SUCCESS;
 }
 
 int uthread_get_tid()
@@ -358,8 +358,8 @@ int uthread_get_quantums(int tid)
 	if (nullptr == thread)
 	{
 		print_library_error("thread id not found");
-		return -1;
+		return STATUS_FAILURE;
 	}
 
-	return thread->get_elapsed_quantums();
+	return thread->elapsed_quantums;
 }
