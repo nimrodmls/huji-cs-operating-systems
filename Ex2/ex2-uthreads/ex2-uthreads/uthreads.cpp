@@ -1,6 +1,7 @@
 #include <iostream>
 #include <memory>
 #include <queue>
+#include <list>
 #include <functional>
 #include <signal.h>
 #include <sys/time.h>
@@ -57,6 +58,7 @@ struct uthread_mgr
 	int quantum_usecs_interval;
 	int elapsed_quantums;
 	std::priority_queue<thread_id, std::vector<thread_id>, std::greater<>> available_ids;
+	std::list<thread_id> sleeper_threads;
 	// Storing all the threads that are ready to run, as a queue,
 	// the threads will be run in a FIFO order
 	std::deque<thread_id> ready_threads;
@@ -80,7 +82,8 @@ static void print_system_error(const std::string& msg)
 
 static void delete_thread(thread_id tid)
 {
-	delete g_mgr.threads[tid]();
+	delete g_mgr.threads[tid];
+	g_mgr.threads[tid] = nullptr;
 	g_mgr.available_ids.push(tid);
 }
 
@@ -121,13 +124,33 @@ static void switch_threads(bool is_blocked, bool terminate_running)
 		running->state = RUNNING;
 		running->elapsed_quantums++;
 	}
-	// otherwise the thread has been resumed, and we should continue running it.
-	// Updating the running thead would not be necessary since we already do so
-	// in the suspend handling.
+}
+
+static void handle_sleeper_threads()
+{
+	std::list<thread_id> to_remove;
+	for (auto iter = g_mgr.sleeper_threads.begin();
+		iter != g_mgr.sleeper_threads.end(); ++iter)
+	{
+		g_mgr.threads[*iter]->sleep_time--;
+		if (0 == g_mgr.threads[*iter]->sleep_time)
+		{
+			to_remove.emplace_back(*iter);
+			g_mgr.threads[*iter]->state = READY;
+			g_mgr.ready_threads.push_back(*iter);
+		}
+	}
+
+	g_mgr.sleeper_threads.remove_if([&to_remove](thread_id tid)
+	{
+		return std::find(
+			to_remove.begin(), to_remove.end(), tid) != to_remove.end();
+	});
 }
 
 static void sigvtalrm_handler(int sig_num)
 {
+	handle_sleeper_threads();
 	switch_threads(false, false);
 	g_mgr.elapsed_quantums++;
 }
@@ -218,6 +241,7 @@ int uthread_spawn(thread_entry_point entrypoint)
 int uthread_terminate(int tid)
 {
 	auto mutex = ctx_switch_mutex();
+
 	// If the requested thread to terminate is the main thread, we should exit the program
 	// as specified in the exercise.
 	if (MAIN_THREAD_ID == tid)
@@ -253,8 +277,7 @@ int uthread_terminate(int tid)
 
 	// We can safely do this here since we will reach here only if the thread is READY or BLOCKED
 	// (because on RUNNING, we will switch to another thread and never return here)
-	delete g_mgr.threads[tid];
-	g_mgr.threads[tid] = nullptr;
+	delete_thread(tid);
 
 	return STATUS_SUCCESS;
 }
@@ -262,6 +285,7 @@ int uthread_terminate(int tid)
 int uthread_block(int tid)
 {
 	auto mutex = ctx_switch_mutex();
+
 	if (MAIN_THREAD_ID == tid)
 	{
 		print_library_error("cannot block the main thread");
@@ -315,6 +339,7 @@ int uthread_resume(int tid)
 		(0 == thread->sleep_time))
 	{
 		g_mgr.ready_threads.push_back(thread->id);
+		thread->state = READY;
 	}
 
 	return STATUS_SUCCESS;
@@ -330,8 +355,8 @@ int uthread_sleep(int num_quantums)
 	}
 
 	// Putting the thread to sleep
+	g_mgr.sleeper_threads.emplace_back(g_mgr.running_thread);
 	g_mgr.threads[g_mgr.running_thread]->sleep_time = num_quantums;
-	// TODO: Sleep time updating
 	// Switching to the next thread
 	switch_threads(true, false);
 

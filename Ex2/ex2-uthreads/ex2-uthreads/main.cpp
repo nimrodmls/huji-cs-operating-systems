@@ -11,6 +11,11 @@ void f(void)
 		if (i == uthread_get_quantums(tid))
 		{
 			std::cout << "f" << tid << " Quanta:" << i << std::endl;
+			if (i == 3)
+			{
+				std::cout << "Sleeping for 2 quantums" << std::endl;
+				uthread_sleep(2);
+			}
 			if (i == 5)
 			{
 				std::cout << "f END" << std::endl;
@@ -62,7 +67,7 @@ int main(void)
 					std::cout << "m spawns f at (1) " << uthread_spawn(f) << std::endl;
 					std::cout << "m spawns g at (2) " << uthread_spawn(g) << std::endl;
 				}
-				if (i == 10)
+				if (i == 20)
 				{
 					std::cout << "Total Quantums: " << uthread_get_total_quantums() << std::endl;
 					uthread_terminate(tid);

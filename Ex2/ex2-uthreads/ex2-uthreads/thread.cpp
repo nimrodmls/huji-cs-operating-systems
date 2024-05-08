@@ -45,10 +45,10 @@ address_t translate_address(address_t addr)
 thread::thread(thread_id id, thread_entry_point ep) :
 	id(id),
 	env_blk(),
-	stack(new char[STACK_SIZE]),
 	state(READY),
 	sleep_time(0),
-	elapsed_quantums(0)
+	elapsed_quantums(0),
+    stack(new char[STACK_SIZE])
 {
     // Initializes environment block to use the right stack,
     // and to run from the function 'entry_point',
@@ -64,7 +64,7 @@ thread::thread(thread_id id, thread_entry_point ep) :
 }
 
 thread::thread(thread_id id) :
-    id(id), env_blk(), stack(nullptr), state(RUNNING), sleep_time(0), elapsed_quantums(1)
+    id(id), env_blk(), state(RUNNING), sleep_time(0), elapsed_quantums(1), stack(nullptr)
 {
     // return value omitted, as this is only initialization
     (void)sigsetjmp(env_blk, 1);
@@ -72,5 +72,10 @@ thread::thread(thread_id id) :
 
 thread::~thread()
 {
+    if (nullptr == stack)
+    {
+	    return;
+	}
+
     delete[] stack;
 }
