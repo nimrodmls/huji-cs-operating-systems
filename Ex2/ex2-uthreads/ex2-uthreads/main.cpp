@@ -8,14 +8,16 @@ void f(void)
 	int i = 1;
 	while (1)
 	{
-		if (i == uthread_get_quantums(tid))
+		auto quant = uthread_get_quantums(tid);
+		if (i == quant)
 		{
 			std::cout << "f" << tid << " Quanta:" << i << std::endl;
-			if (i == 3)
+			/*if (i == 2)
 			{
 				std::cout << "Sleeping for 2 quantums" << std::endl;
 				uthread_sleep(2);
-			}
+				std::cout << "Woke up from sleep" << std::endl;
+			}*/
 			if (i == 5)
 			{
 				std::cout << "f END" << std::endl;
@@ -67,7 +69,7 @@ int main(void)
 					std::cout << "m spawns f at (1) " << uthread_spawn(f) << std::endl;
 					std::cout << "m spawns g at (2) " << uthread_spawn(g) << std::endl;
 				}
-				if (i == 20)
+				if (i == 10)
 				{
 					std::cout << "Total Quantums: " << uthread_get_total_quantums() << std::endl;
 					uthread_terminate(tid);

@@ -58,7 +58,6 @@ struct uthread_mgr
 	int quantum_usecs_interval;
 	int elapsed_quantums;
 	std::priority_queue<thread_id, std::vector<thread_id>, std::greater<>> available_ids;
-	std::list<thread_id> sleeper_threads;
 	// Storing all the threads that are ready to run, as a queue,
 	// the threads will be run in a FIFO order
 	std::deque<thread_id> ready_threads;
@@ -137,24 +136,23 @@ static void switch_threads(bool is_blocked, bool terminate_running)
 
 static void handle_sleeper_threads()
 {
-	std::list<thread_id> to_remove;
-	for (auto iter = g_mgr.sleeper_threads.begin();
-		iter != g_mgr.sleeper_threads.end(); ++iter)
+	for (int it = 0; it < MAX_THREAD_NUM; it++)
 	{
-		g_mgr.threads[*iter]->sleep_time--;
-		if (0 == g_mgr.threads[*iter]->sleep_time)
+		if (nullptr == g_mgr.threads[it])
 		{
-			to_remove.emplace_back(*iter);
-			g_mgr.threads[*iter]->state = READY;
-			g_mgr.ready_threads.push_back(*iter);
+			continue;
+		}
+
+		if (0 != g_mgr.threads[it]->sleep_time)
+		{
+			g_mgr.threads[it]->sleep_time--;
+			if (0 == g_mgr.threads[it]->sleep_time)
+			{
+				g_mgr.threads[it]->state = READY;
+				g_mgr.ready_threads.push_back(it);
+			}
 		}
 	}
-
-	g_mgr.sleeper_threads.remove_if([&to_remove](thread_id tid)
-	{
-		return std::find(
-			to_remove.begin(), to_remove.end(), tid) != to_remove.end();
-	});
 }
 
 static void sigvtalrm_handler(int sig_num)
@@ -169,7 +167,7 @@ int uthread_init(int quantum_usecs)
 	// Non-positive quantum_usecs is considered an error
 	if (quantum_usecs <= 0)
 	{
-		print_library_error("invalid quantum interval value");
+		print_library_error("init - invalid quantum interval value");
 		return STATUS_FAILURE;
 	}
 
@@ -189,7 +187,7 @@ int uthread_init(int quantum_usecs)
 	}
 	catch (const std::bad_alloc&)
 	{
-		print_system_error("thread allocation failed");
+		print_system_error("init - thread allocation failed");
 		return STATUS_FAILURE;
 	}
 	g_mgr.threads[MAIN_THREAD_ID] = main_thread;
@@ -209,7 +207,7 @@ int uthread_init(int quantum_usecs)
 
 	if (-1 == setitimer(ITIMER_VIRTUAL, &timer, NULL))
 	{
-		print_system_error("timer setup failed");
+		print_system_error("init - timer setup failed");
 		return STATUS_FAILURE;
 	}
 
@@ -221,7 +219,7 @@ int uthread_spawn(thread_entry_point entrypoint)
 	auto mutex = ctx_switch_mutex();
 	if (g_mgr.available_ids.empty())
 	{
-		print_library_error("maximum number of threads reached");
+		print_library_error("spawn - maximum number of threads reached");
 		return STATUS_FAILURE;
 	}
 
@@ -237,7 +235,7 @@ int uthread_spawn(thread_entry_point entrypoint)
 	}
 	catch (const std::bad_alloc&)
 	{
-		print_system_error("thread allocation failed");
+		print_system_error("spawn - thread allocation failed");
 		return STATUS_FAILURE;
 	}
 	// Mapping the new thread and marking it ready
@@ -261,7 +259,7 @@ int uthread_terminate(int tid)
 	auto thread = g_mgr.threads[tid];
 	if (nullptr == thread)
 	{
-		print_library_error("thread id not found");
+		print_library_error("terminate - thread id not found");
 		return STATUS_FAILURE;
 	}
 
@@ -297,7 +295,7 @@ int uthread_block(int tid)
 
 	if (MAIN_THREAD_ID == tid)
 	{
-		print_library_error("cannot block the main thread");
+		print_library_error("block - cannot block the main thread");
 		return STATUS_FAILURE;
 	}
 
@@ -312,7 +310,7 @@ int uthread_block(int tid)
 		const auto thread = g_mgr.threads[tid];
 		if (nullptr == thread)
 		{
-			print_library_error("thread id not found");
+			print_library_error("block - thread id not found");
 			return STATUS_FAILURE;
 		}
 
@@ -337,7 +335,7 @@ int uthread_resume(int tid)
 	const auto thread = g_mgr.threads[tid];
 	if (nullptr == thread)
 	{
-		print_library_error("thread id not found");
+		print_library_error("resume - thread id not found");
 		return STATUS_FAILURE;
 	}
 
@@ -359,12 +357,11 @@ int uthread_sleep(int num_quantums)
 	auto mutex = ctx_switch_mutex();
 	if (MAIN_THREAD_ID == g_mgr.running_thread)
 	{
-		print_library_error("cannot sleep the main thread");
+		print_library_error("sleep - cannot sleep the main thread");
 		return STATUS_FAILURE;
 	}
 
 	// Putting the thread to sleep
-	g_mgr.sleeper_threads.emplace_back(g_mgr.running_thread);
 	g_mgr.threads[g_mgr.running_thread]->sleep_time = num_quantums;
 	// Switching to the next thread
 	switch_threads(true, false);
@@ -391,7 +388,7 @@ int uthread_get_quantums(int tid)
 	const auto thread = g_mgr.threads[tid];
 	if (nullptr == thread)
 	{
-		print_library_error("thread id not found");
+		print_library_error("get_quantums - thread id not found");
 		return STATUS_FAILURE;
 	}
 
