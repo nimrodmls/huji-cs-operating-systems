@@ -53,7 +53,7 @@ private:
 
 	thread_id id;
 	// The environment block of the thread
-	char stack[STACK_SIZE];
+	char* stack;
 	thread_state state;
 	int sleep_time;
 	int elapsed_quantums;
