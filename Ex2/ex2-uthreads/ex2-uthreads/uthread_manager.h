@@ -36,21 +36,6 @@ private:
 	std::string message;
 };
 
-/* RAII class for disabling and enabling context switching */
-class ctx_switch_mutex
-{
-public:
-	ctx_switch_mutex() { disable_ctx_switch(); }
-	~ctx_switch_mutex() { enable_ctx_switch(); }
-
-	ctx_switch_mutex(const ctx_switch_mutex&) = delete;
-	ctx_switch_mutex operator=(const ctx_switch_mutex&) = delete;
-
-private:
-	static void disable_ctx_switch();
-	static void enable_ctx_switch();
-};
-
 class uthread_manager
 {
 public:

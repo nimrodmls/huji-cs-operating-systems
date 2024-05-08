@@ -4,22 +4,6 @@
 
 #include "uthread_manager.h"
 
-void ctx_switch_mutex::disable_ctx_switch()
-{
-	sigset_t sigset;
-	sigemptyset(&sigset);
-	sigaddset(&sigset, SIGVTALRM);
-	sigprocmask(SIG_BLOCK, &sigset, nullptr);
-}
-
-void ctx_switch_mutex::enable_ctx_switch()
-{
-	sigset_t sigset;
-	sigemptyset(&sigset);
-	sigaddset(&sigset, SIGVTALRM);
-	sigprocmask(SIG_UNBLOCK, &sigset, nullptr);
-}
-
 uthread_manager::uthread_manager(int quantum_usecs) :
 	quantum_usecs_interval(quantum_usecs),
 	elapsed_quantums(1)
