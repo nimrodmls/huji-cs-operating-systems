@@ -66,6 +66,8 @@ struct uthread_mgr
 	thread_id running_thread;
 	// Storing all the active threads (on all states)
 	thread* threads[MAX_THREAD_NUM];
+	// Storing all the threads marked for deletion
+	std::list<thread_id> to_delete;
 };
 
 static uthread_mgr g_mgr;
@@ -110,7 +112,8 @@ static void switch_threads(bool is_blocked, bool terminate_running)
 		// WE SHOULD NOT REACH HERE DURING SIGNAL HANDLING - SUPER DANGEROUS
 		if (terminate_running)
 		{
-			delete_thread(g_mgr.running_thread);
+			g_mgr.to_delete.emplace_back(g_mgr.running_thread);
+			//delete_thread(g_mgr.running_thread);
 		}
 
 		g_mgr.running_thread = g_mgr.ready_threads.front(); // Getting the next thread to run
@@ -123,6 +126,12 @@ static void switch_threads(bool is_blocked, bool terminate_running)
 		const auto running = g_mgr.threads[g_mgr.running_thread];
 		running->state = RUNNING;
 		running->elapsed_quantums++;
+
+		for (const auto tid : g_mgr.to_delete)
+		{
+			delete_thread(tid);
+		}
+		g_mgr.to_delete.clear();
 	}
 }
 
