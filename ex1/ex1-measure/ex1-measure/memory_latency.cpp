@@ -161,13 +161,13 @@ int main(int argc, char* argv[])
         random_result = measure_latency(
             repeat, 
             static_cast<array_element_t*>(data), 
-            current_size, 
+            current_size / sizeof(array_element_t),
             zero);
         measurement sequential_result = { 0 };
         sequential_result = measure_sequential_latency(
             repeat, 
             static_cast<array_element_t*>(data), 
-            current_size, 
+            current_size / sizeof(array_element_t),
             zero);
         print_measurement_results(current_size, &random_result, &sequential_result);
 
