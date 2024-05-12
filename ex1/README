@@ -1,0 +1,16 @@
+Assignment 1
+The WhatIDo program first creates a new directory named 'Welcome', under the
+current directory, as seen with the mkdir syscall. 
+Upon creation of the new directory, there are 3 consequent calls to openat
+syscall which triggers file creation. The 3 files are created under the newly
+created 'Welcome' directroy and are these files are named 
+(in the order of creation): 'Welcome', 'To', 'OS-2024'.
+Following the 3 file creations, there are 3 consequent file writing syscalls
+as seen with the 'write' syscall. These write syscalls are called once for each
+of the files the program created earlier, and in the same order, though with
+different contents: The first writes 'If you haven't read the course guidelines
+yet --- do it right now!'. The second writes 'Start exercises early!'. The third
+writes 'Good luck!'.
+After the 3 write-file syscalls, the program removes with the 'unlink' syscall
+the 3 files the program created earlier - again, in the same order of creation.
+And by that, the program finishes.
