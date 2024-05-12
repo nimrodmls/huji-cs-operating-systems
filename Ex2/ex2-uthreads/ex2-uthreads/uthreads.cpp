@@ -107,30 +107,20 @@ static void switch_threads(bool is_blocked, bool terminate_running)
 			g_mgr.threads[g_mgr.running_thread]->state = BLOCKED;
 		}
 
-		// If the thread is terminating, we should remove it from the threads map
-		// WE SHOULD NOT REACH HERE DURING SIGNAL HANDLING - SUPER DANGEROUS
-		if (terminate_running)
-		{
-			g_mgr.to_delete.emplace_back(g_mgr.running_thread);
-			//delete_thread(g_mgr.running_thread);
-		}
-
 		g_mgr.running_thread = g_mgr.ready_threads.front(); // Getting the next thread to run
 		g_mgr.ready_threads.pop_front(); // Removing the thread from the queue
+
+		g_mgr.elapsed_quantums++;
+		g_mgr.threads[g_mgr.running_thread]->elapsed_quantums++;
+		g_mgr.threads[g_mgr.running_thread]->state = RUNNING;
 
 		siglongjmp(g_mgr.threads[g_mgr.running_thread]->env_blk, RESUMED);
 	}
 	else
 	{
-		const auto running = g_mgr.threads[g_mgr.running_thread];
-		running->state = RUNNING;
-		running->elapsed_quantums++;
-
-		for (const auto tid : g_mgr.to_delete)
-		{
-			delete_thread(tid);
-		}
-		g_mgr.to_delete.clear();
+		//const auto running = g_mgr.threads[g_mgr.running_thread];
+		//running->state = RUNNING;
+		//running->elapsed_quantums++;
 	}
 }
 
@@ -159,7 +149,6 @@ static void sigvtalrm_handler(int sig_num)
 {
 	handle_sleeper_threads();
 	switch_threads(false, false);
-	g_mgr.elapsed_quantums++;
 }
 
 int uthread_init(int quantum_usecs)
@@ -226,12 +215,16 @@ int uthread_spawn(thread_entry_point entrypoint)
 	const thread_id tid = g_mgr.available_ids.top();
 	g_mgr.available_ids.pop();
 
+	if (nullptr != g_mgr.threads[tid])
+	{
+		delete_thread(tid);
+	}
+
 	// Creating the new thread
 	thread* new_thread = nullptr;
 	try
 	{
 		new_thread = new thread(tid, entrypoint);
-		
 	}
 	catch (const std::bad_alloc&)
 	{

@@ -1,4 +1,4 @@
-﻿#include "uthreads.h"
+#include "uthreads.h"
 
 #include <iostream>
 
@@ -12,12 +12,11 @@ void f(void)
 		if (i == quant)
 		{
 			std::cout << "f" << tid << " Quanta:" << i << std::endl;
-			/*if (i == 2)
+			if (i == 2)
 			{
-				std::cout << "Sleeping for 2 quantums" << std::endl;
-				uthread_sleep(2);
-				std::cout << "Woke up from sleep" << std::endl;
-			}*/
+				std::cout << "going to sleep" << std::endl;
+				uthread_sleep(3);
+			}
 			if (i == 5)
 			{
 				std::cout << "f END" << std::endl;
