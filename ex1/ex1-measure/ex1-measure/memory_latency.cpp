@@ -1,9 +1,31 @@
 // OS 24 EX1
 
 #include "memory_latency.h"
+
+#include <cmath>
+#include <iostream>
+
 #include "measure.h"
 
+#define INITIAL_SIZE 100
+#define DECIMAL_BASE 10
 #define GALOIS_POLYNOMIAL ((1ULL << 63) | (1ULL << 62) | (1ULL << 60) | (1ULL << 59))
+
+typedef enum _program_args
+{
+	ARG_MAX_SIZE = 1,
+	ARG_FACTOR,
+	ARG_REPEAT,
+    NUM_OF_ARGS
+
+} program_args;
+
+typedef enum _program_status
+{
+	STATUS_FAILURE = -1,
+	STATUS_SUCCESS
+
+} program_status;
 
 /**
  * Converts the struct timespec to time in nano-seconds.
@@ -67,6 +89,14 @@ struct measurement measure_sequential_latency(uint64_t repeat, array_element_t* 
     return result;
 }
 
+void print_measurement_results(
+    int size, const measurement* random_result, const measurement* sequential_result)
+{
+	std::cout << size << ","
+			  << random_result->access_time - random_result->baseline << ","
+			  << sequential_result->access_time - sequential_result->baseline << std::endl;
+}
+
 /**
  * Runs the logic of the memory_latency program. Measures the access latency for random and sequential memory access
  * patterns.
@@ -83,10 +113,69 @@ struct measurement measure_sequential_latency(uint64_t repeat, array_element_t* 
  */
 int main(int argc, char* argv[])
 {
+    if (NUM_OF_ARGS != argc)
+    {
+	    std::cerr << "Invalid number of arguments" << std::endl;
+		return STATUS_FAILURE;
+	}
+
+    // Converting and validating the arguments. We don't check errno since
+    // the user input should not be 0 or negative for any of the inputs.
+    const int max_size = strtol(argv[ARG_MAX_SIZE], nullptr, DECIMAL_BASE);
+    if (0 >= max_size)
+    {
+		std::cerr << "Invalid max_size argument" << std::endl;
+		return STATUS_FAILURE;
+    }
+
+    const double factor = strtod(argv[ARG_FACTOR], nullptr);
+    if (0.0 >= factor)
+    {
+        std::cerr << "Invalid factor argument" << std::endl;
+        return STATUS_FAILURE;
+    }
+
+    const int repeat = strtol(argv[ARG_REPEAT], nullptr, DECIMAL_BASE);
+    if (0 >= repeat)
+    {
+        std::cerr << "Invalid repeat argument" << std::endl;
+        return STATUS_FAILURE;
+    }
+
     // zero==0, but the compiler doesn't know it. Use as the zero arg of measure_latency and measure_sequential_latency.
     struct timespec t_dummy;
     timespec_get(&t_dummy, TIME_UTC);
     const uint64_t zero = nanosectime(t_dummy)>1000000000ull?0:nanosectime(t_dummy);
 
-    // Your code here
+    int current_size = INITIAL_SIZE;
+    while (max_size > current_size)
+    {
+        void * data = malloc(current_size);
+        if (nullptr == data)
+        {
+            std::cerr << "Failed to allocate memory" << std::endl;
+			return STATUS_FAILURE;
+        }
+
+        measurement random_result = { 0 };
+        random_result = measure_latency(
+            repeat, 
+            static_cast<array_element_t*>(data), 
+            current_size, 
+            zero);
+        measurement sequential_result = { 0 };
+        sequential_result = measure_sequential_latency(
+            repeat, 
+            static_cast<array_element_t*>(data), 
+            current_size, 
+            zero);
+        print_measurement_results(current_size, &random_result, &sequential_result);
+
+        free(data);
+
+        // Getting the next array size to measure, rounding up to the nearest integer.
+        current_size = static_cast<int>(std::ceil(current_size * factor));
+    }
+
+    return STATUS_SUCCESS;
 }
