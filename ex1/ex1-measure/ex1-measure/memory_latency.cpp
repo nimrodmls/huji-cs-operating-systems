@@ -90,7 +90,7 @@ struct measurement measure_sequential_latency(uint64_t repeat, array_element_t* 
 }
 
 void print_measurement_results(
-    int size, const measurement* random_result, const measurement* sequential_result)
+    uint64_t size, const measurement* random_result, const measurement* sequential_result)
 {
 	std::cout << size << ","
 			  << random_result->access_time - random_result->baseline << ","
@@ -174,7 +174,7 @@ int main(int argc, char* argv[])
         free(data);
 
         // Getting the next array size to measure, rounding up to the nearest integer.
-        current_size = static_cast<int>(std::ceil(current_size * factor));
+        current_size = static_cast<uint64_t>(std::ceil(static_cast<double>(current_size) * factor));
     }
 
     return STATUS_SUCCESS;
