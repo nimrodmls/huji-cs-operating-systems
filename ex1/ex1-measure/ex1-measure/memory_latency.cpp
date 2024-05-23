@@ -121,7 +121,7 @@ int main(int argc, char* argv[])
 
     // Converting and validating the arguments. We don't check errno since
     // the user input should not be 0 or negative for any of the inputs.
-    const int max_size = strtol(argv[ARG_MAX_SIZE], nullptr, DECIMAL_BASE);
+    const uint64_t max_size = strtol(argv[ARG_MAX_SIZE], nullptr, DECIMAL_BASE);
     if (0 >= max_size)
     {
 		std::cerr << "Invalid max_size argument" << std::endl;
@@ -135,7 +135,7 @@ int main(int argc, char* argv[])
         return STATUS_FAILURE;
     }
 
-    const int repeat = strtol(argv[ARG_REPEAT], nullptr, DECIMAL_BASE);
+    const uint64_t repeat = strtol(argv[ARG_REPEAT], nullptr, DECIMAL_BASE);
     if (0 >= repeat)
     {
         std::cerr << "Invalid repeat argument" << std::endl;
