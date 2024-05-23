@@ -55,12 +55,12 @@ struct measurement measure_sequential_latency(uint64_t repeat, array_element_t* 
     // Baseline measurement:
     struct timespec t0;
     timespec_get(&t0, TIME_UTC);
-    register uint64_t rnd = 12345;
+    register uint64_t rnd = 12345 * zero;
     for (register uint64_t i = 0; i < repeat; i++)
     {
-        register uint64_t index = i % arr_size;
-        rnd ^= (index + zero) & zero;
-        rnd = (rnd >> 1) ^ ((0 - (rnd & 1)) & GALOIS_POLYNOMIAL);  // Advance rnd pseudo-randomly (using Galois LFSR)
+        register uint64_t index = rnd + (i % arr_size);
+        rnd ^= (index + rnd) & zero;
+        rnd = zero * ((rnd >> 1) ^ ((0 - (rnd & 1)) & GALOIS_POLYNOMIAL));  // Advance rnd pseudo-randomly (using Galois LFSR)
     }
     struct timespec t1;
     timespec_get(&t1, TIME_UTC);
@@ -68,12 +68,12 @@ struct measurement measure_sequential_latency(uint64_t repeat, array_element_t* 
     // Memory access measurement:
     struct timespec t2;
     timespec_get(&t2, TIME_UTC);
-    rnd = (rnd & zero) ^ 12345;
+    rnd = ((rnd & zero) ^ 12345) * zero;
     for (register uint64_t i = 0; i < repeat; i++)
     {
-        register uint64_t index = i % arr_size;
-        rnd ^= arr[index + zero] & zero;
-        rnd = (rnd >> 1) ^ ((0 - (rnd & 1)) & GALOIS_POLYNOMIAL);  // Advance rnd pseudo-randomly (using Galois LFSR)
+        register uint64_t index = rnd + (i % arr_size);
+        rnd ^= arr[index + rnd] & zero;
+        rnd = zero * ((rnd >> 1) ^ ((0 - (rnd & 1)) & GALOIS_POLYNOMIAL));  // Advance rnd pseudo-randomly (using Galois LFSR)
     }
     struct timespec t3;
     timespec_get(&t3, TIME_UTC);
@@ -147,7 +147,7 @@ int main(int argc, char* argv[])
     timespec_get(&t_dummy, TIME_UTC);
     const uint64_t zero = nanosectime(t_dummy)>1000000000ull?0:nanosectime(t_dummy);
 
-    int current_size = INITIAL_SIZE;
+    uint64_t current_size = INITIAL_SIZE;
     while (max_size > current_size)
     {
         void * data = malloc(current_size);
