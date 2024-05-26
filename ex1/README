@@ -1,4 +1,4 @@
-Assignment 1
+* Assignment 1 - strace
 The WhatIDo program first creates a new directory named 'Welcome', under the
 current directory, as seen with the mkdir syscall. 
 Upon creation of the new directory, there are 3 consequent calls to openat
@@ -14,3 +14,35 @@ writes 'Good luck!'.
 After the 3 write-file syscalls, the program removes with the 'unlink' syscall
 the 3 files the program created earlier - again, in the same order of creation.
 And by that, the program finishes.
+
+* Assignment 2 - Sequential & Random Access Measurements
+From the measurements we can deduce few conclusions regarding the cache memory.
+First, overall, we can see that the sequential access time is stable throughout, 
+not varying as much as the random access time. This makes sense due to the CPU
+prefetching technology, which "prepares" the vicinity of the addressed memory
+as well as accessing the requested memory. Therefore, the prefetched sequentially 
+accessed memory can be placed on the fastest cache at all times, providing the
+good performance we see in the graph.
+Secondly, we can start following the random access plot, and see that before
+hitting the L1d cache there is a slight "bump", which then drops after hitting the
+L1d mark. The hypothesis regarding this phenomenon is that the CPU perhaps
+attempts to fit data from other programs to the L1d (although I attempted to
+be as idle as possible, it is possible that some background tasks engaged), up
+until I requested the allocation of data bigger than the L1d, only then the
+CPU fitted the most it can into the L1d, with the rest going to L2. Hence the
+slight "drop" after the "bump", with the data partitioned on 2 caches.
+The partitioning phenomena can also be seen just after hitting L2 mark - Some
+data is still fitted onto faster caches (the L1d, L2, L3) and after a while much
+of the data will be on the RAM, hence the significant bump.
+
+* Assignment 3 - Bonus: Page Table Eviction Threshold Measurements
+As described in the exercise document, we see that the naive hypothesis is not
+correct. We can see that after the L3 size hits, there is no drastic change in
+the random access times (we will refer it simply as the access time from now on,
+as the sequential access is consistent as described in Pt. 2). The access time indeed
+rises as the size of the buffer rises, but not in drastic bumps. Only around
+the vicinity threshold mark we see the more drastic change, where we possibly 
+experience the exhaustion of faster cache for the purpose of page table
+management, and move onto the slower cache, making the access time to the RAM
+more significant (considering the virtual to physical address translation, 
+and then the access itself)

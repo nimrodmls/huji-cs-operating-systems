@@ -8,9 +8,9 @@ data = data.to_numpy()
 kb = 1024 # 1 KiB
 mb = 1024 * kb # 1 MiB
 
-l1_size = 192 * kb # 192 KiB
-l2_size = 5 * mb # 5 MB
-l3_size = 8 * mb # 8 MB
+l1_size = 128 * kb # 128 KiB
+l2_size = 1 * mb # 1 MB
+l3_size = 6 * mb # 6 MB
 
 word_size = 8 # 64-bit system
 page_size = 4096
@@ -20,12 +20,12 @@ plt.plot(data[:, 0], data[:, 1], label="Random access")
 plt.plot(data[:, 0], data[:, 2], label="Sequential access")
 plt.xscale('log')
 plt.yscale('linear')
-plt.axvline(x=l1_size, label="L1 (192 KiB)", c='r')
-plt.axvline(x=l2_size, label="L2 (5 MB)", c='g')
-plt.axvline(x=l3_size, label="L3 (8 MB)", c='brown')
+plt.axvline(x=l1_size, label="L1 (128 KiB)", c='r')
+plt.axvline(x=l2_size, label="L2 (1 MB)", c='g')
+plt.axvline(x=l3_size, label="L3 (6 MB)", c='brown')
 plt.axvline(x=pagetable_evic_thres, label="PT Evic. Thres.", c='purple')
 plt.legend()
 plt.title("Latency as a function of array size")
-plt.ylabel("Latency (ns log scale)")
+plt.ylabel("Latency (ns linear scale)")
 plt.xlabel("Bytes allocated (log scale)")
 plt.show()
