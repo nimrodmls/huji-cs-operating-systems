@@ -11,6 +11,11 @@
 #define DECIMAL_BASE 10
 #define GALOIS_POLYNOMIAL ((1ULL << 63) | (1ULL << 62) | (1ULL << 60) | (1ULL << 59))
 
+// Minimal value for max_size argument
+constexpr uint64_t max_size_min_value = 100;
+// Minimal value for factor argument
+constexpr double factor_min_value = 1.0;
+
 typedef enum _program_args
 {
 	ARG_MAX_SIZE = 1,
@@ -122,26 +127,27 @@ int main(int argc, char* argv[])
     // Converting and validating the arguments. We don't check errno since
     // the user input should not be 0 or negative for any of the inputs.
     const uint64_t max_size = strtol(argv[ARG_MAX_SIZE], nullptr, DECIMAL_BASE);
-    if (0 >= max_size)
+    if (max_size_min_value > max_size)
     {
 		std::cerr << "Invalid max_size argument" << std::endl;
 		return STATUS_FAILURE;
     }
 
     const double factor = strtod(argv[ARG_FACTOR], nullptr);
-    if (0.0 >= factor)
+    if (factor_min_value > factor)
     {
         std::cerr << "Invalid factor argument" << std::endl;
         return STATUS_FAILURE;
     }
 
-    const uint64_t repeat = strtol(argv[ARG_REPEAT], nullptr, DECIMAL_BASE);
-    if (0 >= repeat)
+    char * endptr = nullptr;
+    const uint64_t repeat = strtol(argv[ARG_REPEAT], &endptr, DECIMAL_BASE);
+    if (nullptr != endptr || UINT64_MAX == repeat)
     {
         std::cerr << "Invalid repeat argument" << std::endl;
         return STATUS_FAILURE;
     }
-
+    
     // zero==0, but the compiler doesn't know it. Use as the zero arg of measure_latency and measure_sequential_latency.
     struct timespec t_dummy;
     timespec_get(&t_dummy, TIME_UTC);
