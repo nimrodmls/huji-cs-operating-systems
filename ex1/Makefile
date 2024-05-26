@@ -14,7 +14,7 @@ TARGETS = $(EXEOBJ)
 TAR=tar
 TARFLAGS=-cvf
 TARNAME=ex1.tar
-TARSRCS=$(CODESRC) Makefile README lscpu.png results.png get-conf.png
+TARSRCS=$(CODESRC) Makefile README lscpu.png results.png results-bonus.png getconf.png
 
 all: $(TARGETS)
 

@@ -142,7 +142,7 @@ int main(int argc, char* argv[])
 
     char * endptr = nullptr;
     const uint64_t repeat = strtol(argv[ARG_REPEAT], &endptr, DECIMAL_BASE);
-    if (nullptr != endptr || UINT64_MAX == repeat)
+    if (0 != *endptr || UINT64_MAX == repeat)
     {
         std::cerr << "Invalid repeat argument" << std::endl;
         return STATUS_FAILURE;
@@ -154,7 +154,7 @@ int main(int argc, char* argv[])
     const uint64_t zero = nanosectime(t_dummy)>1000000000ull?0:nanosectime(t_dummy);
 
     uint64_t current_size = INITIAL_SIZE;
-    while (max_size > current_size)
+    while (max_size >= current_size)
     {
         void * data = malloc(current_size);
         if (nullptr == data)

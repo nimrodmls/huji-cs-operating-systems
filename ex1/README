@@ -1,3 +1,14 @@
+LOGIN
+ID
+OS Ex. 1 - strace & CPU Cache Measurements
+README - This README, with answers and analysis
+Makefile - Makefile for the C/CPP source files
+lscpu.png - Screenshot of lscpu command from the Aquarium's Computers
+getconf.png - Screenshot of getconf PAGE_SIZE for the bonus task, from the Aquarium's Computers
+results.png - Plot of measurements for the primary task (assignment 2)
+results-bonus.png - Plot of measurements for the bonus task (assignment 3)
+memory_latency.cpp - The source file for the measurements
+
 * Assignment 1 - strace
 The WhatIDo program first creates a new directory named 'Welcome', under the
 current directory, as seen with the mkdir syscall. 
