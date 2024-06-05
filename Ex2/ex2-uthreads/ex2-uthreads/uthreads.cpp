@@ -10,7 +10,8 @@
 #include "thread.h"
 #include "uthreads.h"
 
-#define MAIN_THREAD_ID 0
+constexpr uint32_t main_thread_id = 0;
+constexpr uint32_t usec_threshold = 1000000;
 
 enum return_status : int
 {
@@ -172,29 +173,31 @@ int uthread_init(int quantum_usecs)
 	thread* main_thread = nullptr;
 	try
 	{
-		main_thread = new thread(MAIN_THREAD_ID);
+		main_thread = new thread(main_thread_id);
 	}
 	catch (const std::bad_alloc&)
 	{
 		print_system_error("init - thread allocation failed");
 		return STATUS_FAILURE;
 	}
-	g_mgr.threads[MAIN_THREAD_ID] = main_thread;
-	g_mgr.running_thread = MAIN_THREAD_ID;
+	g_mgr.threads[main_thread_id] = main_thread;
+	g_mgr.running_thread = main_thread_id;
 
 	// Setting up the sigaction associated with the timer
 	struct sigaction new_action = { 0 };
 	new_action.sa_handler = sigvtalrm_handler;
 	sigemptyset(&new_action.sa_mask);
 	sigaddset(&new_action.sa_mask, SIGVTALRM);
-	sigaction(SIGVTALRM, &new_action, NULL);
+	sigaction(SIGVTALRM, &new_action, nullptr);
 
 	// Setting up the timer
 	struct itimerval timer = { 0 };
-	timer.it_value.tv_usec = g_mgr.quantum_usecs_interval;
-	timer.it_interval.tv_usec = g_mgr.quantum_usecs_interval;
+	timer.it_value.tv_sec = g_mgr.quantum_usecs_interval / usec_threshold;	
+	timer.it_value.tv_usec = g_mgr.quantum_usecs_interval % usec_threshold;
+	timer.it_interval.tv_sec = g_mgr.quantum_usecs_interval / usec_threshold;
+	timer.it_interval.tv_usec = g_mgr.quantum_usecs_interval % usec_threshold;
 
-	if (-1 == setitimer(ITIMER_VIRTUAL, &timer, NULL))
+	if (-1 == setitimer(ITIMER_VIRTUAL, &timer, nullptr))
 	{
 		print_system_error("init - timer setup failed");
 		return STATUS_FAILURE;
@@ -203,7 +206,7 @@ int uthread_init(int quantum_usecs)
 	return STATUS_SUCCESS;
 }
 
-int uthread_spawn(thread_entry_point entrypoint)
+int uthread_spawn(thread_entry_point entry_point)
 {
 	auto mutex = ctx_switch_mutex();
 	if (g_mgr.available_ids.empty())
@@ -224,7 +227,7 @@ int uthread_spawn(thread_entry_point entrypoint)
 	thread* new_thread = nullptr;
 	try
 	{
-		new_thread = new thread(tid, entrypoint);
+		new_thread = new thread(tid, entry_point);
 	}
 	catch (const std::bad_alloc&)
 	{
@@ -244,7 +247,7 @@ int uthread_terminate(int tid)
 
 	// If the requested thread to terminate is the main thread, we should exit the program
 	// as specified in the exercise.
-	if (MAIN_THREAD_ID == tid)
+	if (main_thread_id == tid)
 	{
 		exit(0);
 	}
@@ -286,7 +289,7 @@ int uthread_block(int tid)
 {
 	auto mutex = ctx_switch_mutex();
 
-	if (MAIN_THREAD_ID == tid)
+	if (main_thread_id == tid)
 	{
 		print_library_error("block - cannot block the main thread");
 		return STATUS_FAILURE;
@@ -348,7 +351,7 @@ int uthread_resume(int tid)
 int uthread_sleep(int num_quantums)
 {
 	auto mutex = ctx_switch_mutex();
-	if (MAIN_THREAD_ID == g_mgr.running_thread)
+	if (main_thread_id == g_mgr.running_thread)
 	{
 		print_library_error("sleep - cannot sleep the main thread");
 		return STATUS_FAILURE;

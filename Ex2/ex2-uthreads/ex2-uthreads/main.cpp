@@ -8,15 +8,9 @@ void f(void)
 	int i = 1;
 	while (1)
 	{
-		auto quant = uthread_get_quantums(tid);
-		if (i == quant)
+		if (i == uthread_get_quantums(tid))
 		{
 			std::cout << "f" << tid << " Quanta:" << i << std::endl;
-			if (i == 2)
-			{
-				std::cout << "going to sleep" << std::endl;
-				uthread_sleep(3);
-			}
 			if (i == 5)
 			{
 				std::cout << "f END" << std::endl;
