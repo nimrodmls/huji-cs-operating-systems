@@ -1,0 +1,9 @@
+LOGIN
+ID
+OS Ex. 2 - User Threads Library
+README - This README, with answers to the theoretical part
+Makefile - Makefile for the C/CPP source files
+thread.cpp/thread.h - Abstraction for a single user thread and its properties
+uthreads.cpp - The primary library implementation
+
+THEORETICAL PART ANSWERS GO HERE
