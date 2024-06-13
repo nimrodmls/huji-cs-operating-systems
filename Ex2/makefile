@@ -1,37 +1,33 @@
 CC=g++
 CXX=g++
+RANLIB=ranlib
 
-CODESRC= thread.cpp uthreads.cpp
-CODEHDR= thread.h
-CODEOBJ= thread.o uthreads.o
-EXESRC= $(CODESRC)
-LIBOBJ= libuthreads.a
+LIBSRC=uthreads.cpp thread.cpp
+LIBOBJ=$(LIBSRC:.cpp=.o)
 
 INCS=-I.
-CFLAGS = -Wall -std=c++11 $(INCS) -c
-CXXFLAGS = -Wall -std=c++11 $(INCS) -c
+CFLAGS = -Wall -std=c++11 -g $(INCS)
+CXXFLAGS = -Wall -std=c++11 -g $(INCS)
 
-TARGETS = $(LIBOBJ)
+UTHREADLIB = libuthreads.a
+TARGETS = $(UTHREADLIB)
 
 TAR=tar
 TARFLAGS=-cvf
 TARNAME=ex2.tar
-TARSRCS=$(CODESRC) $(CODEHDR) Makefile README
-
-AR = ar
-ARFLAGS = rvs
+TARSRCS=$(LIBSRC) Makefile README
 
 all: $(TARGETS)
 
-$(TARGETS): $(EXESRC)
-	$(CXX) $(CXXFLAGS) $^
-	$(AR) $(ARFLAGS) $@ $(CODEOBJ)
+$(TARGETS): $(LIBOBJ)
+	$(AR) $(ARFLAGS) $@ $^
+	$(RANLIB) $@
 
 clean:
-	$(RM) $(TARGETS)
+	$(RM) $(TARGETS) $(UTHREADLIB) $(OBJ) $(LIBOBJ) *~ *core
 
 depend:
-	makedepend -- $(CFLAGS) -- $(SRC) $(EXESRC)
+	makedepend -- $(CFLAGS) -- $(SRC) $(LIBSRC)
 
 tar:
 	$(TAR) $(TARFLAGS) $(TARNAME) $(TARSRCS)
