@@ -10,6 +10,12 @@
 #include "thread.h"
 #include "uthreads.h"
 
+/*
+ * NOTE: The code uses exit(1) as a way to terminate the program in case of a system error,
+ *		 as per the exercise requirements. This is not a good practice in a real-world application,
+ *		 and the error should be propagated to the caller instead.
+ */
+
 constexpr uint32_t main_thread_id = 0;
 constexpr uint32_t usec_threshold = 1000000;
 
@@ -25,15 +31,25 @@ enum suspend_state : int
 	RESUMED
 };
 
+static void print_library_error(const std::string& msg)
+{
+	std::cerr << "thread library error: " << msg << std::endl;
+}
+
+static void print_system_error(const std::string& msg)
+{
+	std::cerr << "system error: " << msg << std::endl;
+}
+
 /* RAII class for disabling and enabling context switching */
-class ctx_switch_mutex
+class ctx_switch_lock
 {
 public:
-	ctx_switch_mutex() { disable_ctx_switch(); }
-	~ctx_switch_mutex() { enable_ctx_switch(); }
+	ctx_switch_lock() { disable_ctx_switch(); }
+	~ctx_switch_lock() { enable_ctx_switch(); }
 
-	ctx_switch_mutex(const ctx_switch_mutex&) = delete;
-	ctx_switch_mutex operator=(const ctx_switch_mutex&) = delete;
+	ctx_switch_lock(const ctx_switch_lock&) = delete;
+	ctx_switch_lock operator=(const ctx_switch_lock&) = delete;
 
 private:
 	static void disable_ctx_switch()
@@ -41,7 +57,11 @@ private:
 		sigset_t sigset;
 		sigemptyset(&sigset);
 		sigaddset(&sigset, SIGVTALRM);
-		sigprocmask(SIG_BLOCK, &sigset, nullptr);
+		if (-1 == sigprocmask(SIG_BLOCK, &sigset, nullptr))
+		{
+			print_system_error("lock - failed to disable context switching");
+			exit(1);
+		}
 	}
 
 	static void enable_ctx_switch()
@@ -49,7 +69,11 @@ private:
 		sigset_t sigset;
 		sigemptyset(&sigset);
 		sigaddset(&sigset, SIGVTALRM);
-		sigprocmask(SIG_UNBLOCK, &sigset, nullptr);
+		if (-1 == sigprocmask(SIG_UNBLOCK, &sigset, nullptr))
+		{
+			print_system_error("lock - failed to reenable context switching");
+			exit(1);
+		}
 	}
 };
 
@@ -72,14 +96,20 @@ struct uthread_mgr
 
 static uthread_mgr g_mgr;
 
-static void print_library_error(const std::string& msg)
+static void reset_timer()
 {
-	std::cerr << "thread library error: " << msg << std::endl;
-}
+	// Setting up the timer
+	struct itimerval timer = { 0 };
+	timer.it_value.tv_sec = g_mgr.quantum_usecs_interval / usec_threshold;
+	timer.it_value.tv_usec = g_mgr.quantum_usecs_interval % usec_threshold;
+	timer.it_interval.tv_sec = g_mgr.quantum_usecs_interval / usec_threshold;
+	timer.it_interval.tv_usec = g_mgr.quantum_usecs_interval % usec_threshold;
 
-static void print_system_error(const std::string& msg)
-{
-	std::cerr << "system error: " << msg << std::endl;
+	if (-1 == setitimer(ITIMER_VIRTUAL, &timer, nullptr))
+	{
+		print_system_error("init - timer setup failed");
+		exit(1);
+	}
 }
 
 static void delete_thread(thread_id tid)
@@ -105,6 +135,9 @@ static void switch_threads(bool is_blocked, bool terminate_running)
 		}
 		else
 		{
+			// If the thread is being blocked, we reset the timer to allow
+			// full quantum for the next thread
+			reset_timer();
 			g_mgr.threads[g_mgr.running_thread]->state = BLOCKED;
 		}
 
@@ -116,12 +149,6 @@ static void switch_threads(bool is_blocked, bool terminate_running)
 		g_mgr.threads[g_mgr.running_thread]->state = RUNNING;
 
 		siglongjmp(g_mgr.threads[g_mgr.running_thread]->env_blk, RESUMED);
-	}
-	else
-	{
-		//const auto running = g_mgr.threads[g_mgr.running_thread];
-		//running->state = RUNNING;
-		//running->elapsed_quantums++;
 	}
 }
 
@@ -178,8 +205,9 @@ int uthread_init(int quantum_usecs)
 	catch (const std::bad_alloc&)
 	{
 		print_system_error("init - thread allocation failed");
-		return STATUS_FAILURE;
+		exit(1);
 	}
+
 	g_mgr.threads[main_thread_id] = main_thread;
 	g_mgr.running_thread = main_thread_id;
 
@@ -191,24 +219,14 @@ int uthread_init(int quantum_usecs)
 	sigaction(SIGVTALRM, &new_action, nullptr);
 
 	// Setting up the timer
-	struct itimerval timer = { 0 };
-	timer.it_value.tv_sec = g_mgr.quantum_usecs_interval / usec_threshold;	
-	timer.it_value.tv_usec = g_mgr.quantum_usecs_interval % usec_threshold;
-	timer.it_interval.tv_sec = g_mgr.quantum_usecs_interval / usec_threshold;
-	timer.it_interval.tv_usec = g_mgr.quantum_usecs_interval % usec_threshold;
-
-	if (-1 == setitimer(ITIMER_VIRTUAL, &timer, nullptr))
-	{
-		print_system_error("init - timer setup failed");
-		return STATUS_FAILURE;
-	}
+	reset_timer();
 
 	return STATUS_SUCCESS;
 }
 
 int uthread_spawn(thread_entry_point entry_point)
 {
-	auto mutex = ctx_switch_mutex();
+	auto mutex = ctx_switch_lock();
 	if (g_mgr.available_ids.empty())
 	{
 		print_library_error("spawn - maximum number of threads reached");
@@ -243,7 +261,7 @@ int uthread_spawn(thread_entry_point entry_point)
 
 int uthread_terminate(int tid)
 {
-	auto mutex = ctx_switch_mutex();
+	auto mutex = ctx_switch_lock();
 
 	// If the requested thread to terminate is the main thread, we should exit the program
 	// as specified in the exercise.
@@ -287,7 +305,7 @@ int uthread_terminate(int tid)
 
 int uthread_block(int tid)
 {
-	auto mutex = ctx_switch_mutex();
+	auto mutex = ctx_switch_lock();
 
 	if (main_thread_id == tid)
 	{
@@ -325,7 +343,7 @@ int uthread_block(int tid)
 
 int uthread_resume(int tid)
 {
-	auto mutex = ctx_switch_mutex();
+	auto mutex = ctx_switch_lock();
 
 	// Looking up the thread
 	const auto thread = g_mgr.threads[tid];
@@ -350,7 +368,7 @@ int uthread_resume(int tid)
 
 int uthread_sleep(int num_quantums)
 {
-	auto mutex = ctx_switch_mutex();
+	auto mutex = ctx_switch_lock();
 	if (main_thread_id == g_mgr.running_thread)
 	{
 		print_library_error("sleep - cannot sleep the main thread");
@@ -367,19 +385,19 @@ int uthread_sleep(int num_quantums)
 
 int uthread_get_tid()
 {
-	auto mutex = ctx_switch_mutex();
+	auto mutex = ctx_switch_lock();
 	return g_mgr.running_thread;
 }
 
 int uthread_get_total_quantums()
 {
-	auto mutex = ctx_switch_mutex();
+	auto mutex = ctx_switch_lock();
 	return g_mgr.elapsed_quantums;
 }
 
 int uthread_get_quantums(int tid)
 {
-	auto mutex = ctx_switch_mutex();
+	auto mutex = ctx_switch_lock();
 
 	const auto thread = g_mgr.threads[tid];
 	if (nullptr == thread)
