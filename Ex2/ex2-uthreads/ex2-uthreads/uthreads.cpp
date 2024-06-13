@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <iostream>
 #include <memory>
 #include <queue>
@@ -18,6 +19,7 @@
 
 constexpr uint32_t main_thread_id = 0;
 constexpr uint32_t usec_threshold = 1000000;
+using thread_id_queue = std::priority_queue<thread_id, std::vector<thread_id>, std::greater<thread_id>>;
 
 enum return_status : int
 {
@@ -82,7 +84,7 @@ struct uthread_mgr
 {
 	int quantum_usecs_interval;
 	int elapsed_quantums;
-	std::priority_queue<thread_id, std::vector<thread_id>, std::greater<>> available_ids;
+	thread_id_queue available_ids;
 	// Storing all the threads that are ready to run, as a queue,
 	// the threads will be run in a FIFO order
 	std::deque<thread_id> ready_threads;
@@ -175,7 +177,12 @@ static void handle_sleeper_threads()
 
 static void sigvtalrm_handler(int sig_num)
 {
+	// Signal number is not used - We expect this function to be called only by the timer
+
+	// Readying up the sleeper threads (if any)
 	handle_sleeper_threads();
+
+	// Switching to the next thread
 	switch_threads(false, false);
 }
 
@@ -194,7 +201,7 @@ int uthread_init(int quantum_usecs)
 	// Setting up the available thread IDs
 	std::vector<thread_id> available(MAX_THREAD_NUM-1);
 	std::iota(available.begin(), available.end(), 1);
-	g_mgr.available_ids = std::priority_queue(std::greater(), available);
+	g_mgr.available_ids = thread_id_queue(std::greater<thread_id>(), available);
 
 	// Setting up the main thread
 	thread* main_thread = nullptr;
@@ -214,9 +221,16 @@ int uthread_init(int quantum_usecs)
 	// Setting up the sigaction associated with the timer
 	struct sigaction new_action = { 0 };
 	new_action.sa_handler = sigvtalrm_handler;
-	sigemptyset(&new_action.sa_mask);
-	sigaddset(&new_action.sa_mask, SIGVTALRM);
-	sigaction(SIGVTALRM, &new_action, nullptr);
+
+	int sigset_retval = 0;
+	sigset_retval += sigemptyset(&new_action.sa_mask);
+	sigset_retval += sigaddset(&new_action.sa_mask, SIGVTALRM);
+	sigset_retval += sigaction(SIGVTALRM, &new_action, nullptr);
+	if (0 != sigset_retval)
+	{
+		print_system_error("init - failed to setup signal handling");
+		exit(1);
+	}
 
 	// Setting up the timer
 	reset_timer();
@@ -226,7 +240,7 @@ int uthread_init(int quantum_usecs)
 
 int uthread_spawn(thread_entry_point entry_point)
 {
-	auto mutex = ctx_switch_lock();
+	ctx_switch_lock mutex{};
 	if (g_mgr.available_ids.empty())
 	{
 		print_library_error("spawn - maximum number of threads reached");
@@ -250,7 +264,7 @@ int uthread_spawn(thread_entry_point entry_point)
 	catch (const std::bad_alloc&)
 	{
 		print_system_error("spawn - thread allocation failed");
-		return STATUS_FAILURE;
+		exit(1);
 	}
 	// Mapping the new thread and marking it ready
 	g_mgr.threads[tid] = new_thread;
@@ -261,7 +275,7 @@ int uthread_spawn(thread_entry_point entry_point)
 
 int uthread_terminate(int tid)
 {
-	auto mutex = ctx_switch_lock();
+	ctx_switch_lock mutex{};
 
 	// If the requested thread to terminate is the main thread, we should exit the program
 	// as specified in the exercise.
@@ -288,7 +302,7 @@ int uthread_terminate(int tid)
 	{
 		const auto find_result =
 			std::find(g_mgr.ready_threads.begin(),
-					g_mgr.ready_threads.end(),
+					  g_mgr.ready_threads.end(),
 					  thread->id);
 		if (find_result != g_mgr.ready_threads.end())
 		{
@@ -305,7 +319,7 @@ int uthread_terminate(int tid)
 
 int uthread_block(int tid)
 {
-	auto mutex = ctx_switch_lock();
+	ctx_switch_lock mutex{};
 
 	if (main_thread_id == tid)
 	{
@@ -343,7 +357,7 @@ int uthread_block(int tid)
 
 int uthread_resume(int tid)
 {
-	auto mutex = ctx_switch_lock();
+	ctx_switch_lock mutex{};
 
 	// Looking up the thread
 	const auto thread = g_mgr.threads[tid];
@@ -368,7 +382,7 @@ int uthread_resume(int tid)
 
 int uthread_sleep(int num_quantums)
 {
-	auto mutex = ctx_switch_lock();
+	ctx_switch_lock mutex{};
 	if (main_thread_id == g_mgr.running_thread)
 	{
 		print_library_error("sleep - cannot sleep the main thread");
@@ -385,19 +399,19 @@ int uthread_sleep(int num_quantums)
 
 int uthread_get_tid()
 {
-	auto mutex = ctx_switch_lock();
+	ctx_switch_lock mutex{};
 	return g_mgr.running_thread;
 }
 
 int uthread_get_total_quantums()
 {
-	auto mutex = ctx_switch_lock();
+	ctx_switch_lock mutex{};
 	return g_mgr.elapsed_quantums;
 }
 
 int uthread_get_quantums(int tid)
 {
-	auto mutex = ctx_switch_lock();
+	ctx_switch_lock mutex{};
 
 	const auto thread = g_mgr.threads[tid];
 	if (nullptr == thread)
