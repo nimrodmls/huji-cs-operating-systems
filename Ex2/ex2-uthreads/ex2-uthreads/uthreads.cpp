@@ -23,8 +23,8 @@ using thread_id_queue = std::priority_queue<thread_id, std::vector<thread_id>, s
 
 enum return_status : int
 {
-	STATUS_SUCCESS,
-	STATUS_FAILURE
+	STATUS_FAILURE = -1,
+	STATUS_SUCCESS = 0
 };
 
 enum suspend_state : int
@@ -82,6 +82,18 @@ private:
 /* Context manager for the user threads */
 struct uthread_mgr
 {
+	uthread_mgr() :
+		quantum_usecs_interval(0),
+		elapsed_quantums(0),
+		available_ids(),
+		ready_threads(),
+		running_thread(0),
+		threads(),
+		to_delete()
+	{
+		threads[main_thread_id] = nullptr;
+	}
+
 	int quantum_usecs_interval;
 	int elapsed_quantums;
 	thread_id_queue available_ids;
@@ -93,7 +105,7 @@ struct uthread_mgr
 	// Storing all the active threads (on all states)
 	thread* threads[MAX_THREAD_NUM];
 	// Storing all the threads marked for deletion
-	std::list<thread_id> to_delete;
+	std::vector<thread_id> to_delete;
 };
 
 static uthread_mgr g_mgr;
@@ -141,6 +153,11 @@ static void switch_threads(bool is_blocked, bool terminate_running)
 			// full quantum for the next thread
 			reset_timer();
 			g_mgr.threads[g_mgr.running_thread]->state = BLOCKED;
+		}
+
+		if (terminate_running)
+		{
+			g_mgr.to_delete.push_back(g_mgr.running_thread);
 		}
 
 		g_mgr.running_thread = g_mgr.ready_threads.front(); // Getting the next thread to run
@@ -241,6 +258,14 @@ int uthread_init(int quantum_usecs)
 int uthread_spawn(thread_entry_point entry_point)
 {
 	ctx_switch_lock mutex{};
+
+	// First, deleting all the threads which are done
+	for (const thread_id id : g_mgr.to_delete)
+	{
+		delete_thread(id);
+	}
+	g_mgr.to_delete.clear();
+
 	if (g_mgr.available_ids.empty())
 	{
 		print_library_error("spawn - maximum number of threads reached");
@@ -266,6 +291,7 @@ int uthread_spawn(thread_entry_point entry_point)
 		print_system_error("spawn - thread allocation failed");
 		exit(1);
 	}
+
 	// Mapping the new thread and marking it ready
 	g_mgr.threads[tid] = new_thread;
 	g_mgr.ready_threads.push_back(tid);
