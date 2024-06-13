@@ -183,7 +183,8 @@ static void handle_sleeper_threads()
 		if (0 != g_mgr.threads[it]->sleep_time)
 		{
 			g_mgr.threads[it]->sleep_time--;
-			if (0 == g_mgr.threads[it]->sleep_time)
+			if ((0 == g_mgr.threads[it]->sleep_time) && 
+				(!g_mgr.threads[it]->is_blocked))
 			{
 				g_mgr.threads[it]->state = READY;
 				g_mgr.ready_threads.push_back(it);
@@ -356,6 +357,7 @@ int uthread_block(int tid)
 	if (tid == g_mgr.running_thread)
 	{
 		// The running thread is blocking itself, we should switch to the next thread
+		g_mgr.threads[tid]->is_blocked = true;
 		switch_threads(true, false);
 	}
 	else
@@ -374,8 +376,10 @@ int uthread_block(int tid)
 		if (find_result != g_mgr.ready_threads.end())
 		{
 			g_mgr.ready_threads.erase(find_result);
-			g_mgr.threads[tid]->state = BLOCKED;
 		}
+
+		g_mgr.threads[tid]->state = BLOCKED;
+		g_mgr.threads[tid]->is_blocked = true;
 	}
 
 	return STATUS_SUCCESS;

@@ -30,6 +30,7 @@ public:
 	sigjmp_buf env_blk;
 	thread_state state;
 	int sleep_time;
+	bool is_blocked;
 	int elapsed_quantums;
 
 private:

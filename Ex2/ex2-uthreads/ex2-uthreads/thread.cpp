@@ -43,10 +43,11 @@ address_t translate_address(address_t addr)
 #endif
 
 thread::thread(thread_id id, thread_entry_point ep) :
-	id(id),
-	env_blk(),
-	state(READY),
-	sleep_time(0),
+    id(id),
+    env_blk(),
+    state(READY),
+    sleep_time(0),
+	is_blocked(false),
 	elapsed_quantums(0),
     stack(new char[STACK_SIZE])
 {
@@ -64,7 +65,7 @@ thread::thread(thread_id id, thread_entry_point ep) :
 }
 
 thread::thread(thread_id id) :
-    id(id), env_blk(), state(RUNNING), sleep_time(0), elapsed_quantums(1), stack(nullptr)
+    id(id), env_blk(), state(RUNNING), sleep_time(0), is_blocked(false), elapsed_quantums(1), stack(nullptr)
 {
     // return value omitted, as this is only initialization
     (void)sigsetjmp(env_blk, 1);
