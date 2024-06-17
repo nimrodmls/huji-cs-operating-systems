@@ -3,6 +3,7 @@ CXX=g++
 RANLIB=ranlib
 
 LIBSRC=uthreads.cpp thread.cpp
+LIBHDR=thread.h
 LIBOBJ=$(LIBSRC:.cpp=.o)
 
 INCS=-I.
@@ -15,7 +16,7 @@ TARGETS = $(UTHREADLIB)
 TAR=tar
 TARFLAGS=-cvf
 TARNAME=ex2.tar
-TARSRCS=$(LIBSRC) Makefile README
+TARSRCS=$(LIBSRC) $(LIBHDR) Makefile README
 
 all: $(TARGETS)
 

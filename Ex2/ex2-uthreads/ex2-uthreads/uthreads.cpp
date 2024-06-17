@@ -2,7 +2,6 @@
 #include <iostream>
 #include <memory>
 #include <queue>
-#include <list>
 #include <functional>
 #include <signal.h>
 #include <sys/time.h>
@@ -17,22 +16,26 @@
  *		 and the error should be propagated to the caller instead.
  */
 
+/* Constants */
 constexpr uint32_t main_thread_id = 0;
 constexpr uint32_t usec_threshold = 1000000;
 using thread_id_queue = std::priority_queue<thread_id, std::vector<thread_id>, std::greater<thread_id>>;
 
+/* Enum for the return status of the library functions */
 enum return_status : int
 {
 	STATUS_FAILURE = -1,
 	STATUS_SUCCESS = 0
 };
 
+/* Enum for the jump suspend state of the thread */
 enum suspend_state : int
 {
 	SUSPENDED,
 	RESUMED
 };
 
+/* Helper functions for printing errors */
 static void print_library_error(const std::string& msg)
 {
 	std::cerr << "thread library error: " << msg << std::endl;
@@ -79,20 +82,17 @@ private:
 	}
 };
 
-/* Context manager for the user threads */
-struct uthread_mgr
+/* Manager for the user threads */
+class uthread_mgr
 {
+
+public:
 	uthread_mgr() :
 		quantum_usecs_interval(0),
 		elapsed_quantums(0),
-		available_ids(),
-		ready_threads(),
 		running_thread(0),
-		threads(),
-		to_delete()
-	{
-		threads[main_thread_id] = nullptr;
-	}
+		threads()
+	{}
 
 	int quantum_usecs_interval;
 	int elapsed_quantums;
@@ -110,6 +110,7 @@ struct uthread_mgr
 
 static uthread_mgr g_mgr;
 
+/* Resets the timer to the quantum interval set in the manager */
 static void reset_timer()
 {
 	// Setting up the timer
@@ -126,6 +127,7 @@ static void reset_timer()
 	}
 }
 
+/* Deletes a thread from the manager */
 static void delete_thread(thread_id tid)
 {
 	delete g_mgr.threads[tid];
@@ -180,9 +182,13 @@ static void handle_sleeper_threads()
 			continue;
 		}
 
+		// Finding all the sleeping threads and decrementing their sleep time
 		if (0 != g_mgr.threads[it]->sleep_time)
 		{
 			g_mgr.threads[it]->sleep_time--;
+			// If the sleep time has passed, we should wake up the thread
+			// that is if and only if the thread is not blocked
+			// (if the thread is blocked, it will be woken up by uthread_resume)
 			if ((0 == g_mgr.threads[it]->sleep_time) && 
 				(!g_mgr.threads[it]->is_blocked))
 			{
@@ -276,11 +282,6 @@ int uthread_spawn(thread_entry_point entry_point)
 	const thread_id tid = g_mgr.available_ids.top();
 	g_mgr.available_ids.pop();
 
-	if (nullptr != g_mgr.threads[tid])
-	{
-		delete_thread(tid);
-	}
-
 	// Creating the new thread
 	thread* new_thread = nullptr;
 	try
@@ -305,9 +306,13 @@ int uthread_terminate(int tid)
 	ctx_switch_lock mutex{};
 
 	// If the requested thread to terminate is the main thread, we should exit the program
-	// as specified in the exercise.
+	// as specified in the exercise. All the user threads will be deleted.
 	if (main_thread_id == tid)
 	{
+		for (const thread* t : g_mgr.threads)
+		{
+			delete t;
+		}
 		exit(0);
 	}
 
