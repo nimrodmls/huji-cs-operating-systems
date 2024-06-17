@@ -15,6 +15,8 @@
 constexpr uint64_t max_size_min_value = 100;
 // Minimal value for factor argument
 constexpr double factor_min_value = 1.0;
+// Minimal value for repeat argument
+constexpr uint64_t repeat_min_value = 1;
 
 typedef enum _program_args
 {
@@ -142,7 +144,7 @@ int main(int argc, char* argv[])
 
     char * endptr = nullptr;
     const uint64_t repeat = strtol(argv[ARG_REPEAT], &endptr, DECIMAL_BASE);
-    if (0 != *endptr || UINT64_MAX == repeat)
+    if ((repeat_min_value > repeat) || (0 != *endptr) || (UINT64_MAX == repeat))
     {
         std::cerr << "Invalid repeat argument" << std::endl;
         return STATUS_FAILURE;
