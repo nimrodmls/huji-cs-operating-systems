@@ -1,3 +1,4 @@
+#include <memory>
 #include <pthread.h>
 
 // Entrypoint for a thread - Receives a ptr to the arguments
@@ -25,3 +26,5 @@ private:
 	pthread_t m_thread;
 	ThreadEntrypoint m_entrypoint;
 };
+
+using ThreadPtr = std::shared_ptr<Thread>;
