@@ -1,6 +1,14 @@
 #include "MapReduceFramework.h"
 #include "JobContext.h"
 
+void emit2(K2* key, V2* value, void* context)
+{
+}
+
+void emit3(K3* key, V3* value, void* context)
+{
+}
+
 JobHandle startMapReduceJob(
 	const MapReduceClient& client,
 	const InputVec& inputVec, 
@@ -12,6 +20,7 @@ JobHandle startMapReduceJob(
 	{
 		jobContext->add_worker();
 	}
+	jobContext->start_job();
 
 	return jobContext;
 }
