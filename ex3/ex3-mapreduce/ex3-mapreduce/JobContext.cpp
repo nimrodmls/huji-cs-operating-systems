@@ -10,7 +10,9 @@ JobContext::JobContext(
 	m_stage(UNDEFINED_STAGE),
 	m_inputVec(inputVec),
 	m_outputVec(outputVec),
+	m_client(client),
 	m_stageCnt(0),
+	m_shuffleAssign(false),
 	m_workers(),
 	m_workersIntermediate()
 {}
@@ -33,6 +35,7 @@ void JobContext::start_job()
 	assert(UNDEFINED_STAGE == m_stage);
 
 	m_stage = MAP_STAGE;
+	set_stage_total(static_cast<uint32_t>(m_inputVec.size()));
 	for (const auto& worker : m_workers)
 	{
 		worker->run();
@@ -82,6 +85,12 @@ void JobContext::set_stage(stage_t new_stage)
 	m_stageCnt |= (static_cast<uint64_t>(new_stage) << 62);
 }
 
+void JobContext::reset_stage_processed()
+{
+	// Reset the processed count
+	m_stageCnt &= ~(0x7FFFFFFFULL);
+}
+
 uint32_t JobContext::inc_stage_processed()
 {
 	// Increment the processed count
@@ -96,12 +105,14 @@ void JobContext::set_stage_total(uint32_t total)
 	m_stageCnt |= (static_cast<uint64_t>(total) << 33);
 }
 
-void* JobContext::job_worker_thread(void* context)
+bool JobContext::assign_shuffle_job()
 {
-	assert(nullptr != context);
+	bool val = false;
+	return m_shuffleAssign.compare_exchange_strong(val, true);
+}
 
-	// Worker's context will be released upon thread termination
-	const std::unique_ptr<WorkerContext> worker_ctx(static_cast<WorkerContext*>(context));
+void worker_handle_current_stage(const std::shared_ptr<WorkerContext> worker_ctx)
+{
 	JobContext* job_context = worker_ctx->jobContext;
 
 	// Incrementing the processed count, and checking if the stage is complete
@@ -109,16 +120,17 @@ void* JobContext::job_worker_thread(void* context)
 	// Stage is complete - Note that it's either complete if the processed
 	// count is higher than the total count, or if the processed count overflowed 31 bits
 	// (hence the stage total would be overwritten and corrupted)
-	if ((old_val > job_context->get_stage_total()) || (0xFFFFFFFF >> 1) <= old_val)
-	{
-		
-	}
-	else // Stage is incomplete - More processing should be made
+	// TODO: Overflow check is incomplete
+	while ((old_val < job_context->get_stage_total()) && (0xFFFFFFFF >> 1) > old_val)
 	{
 		switch (job_context->get_stage())
 		{
 		case MAP_STAGE:
-
+			const InputPair current_entry = job_context->get_input_vec()[old_val + 1];
+			job_context->get_client().map(
+				current_entry.first, 
+				current_entry.second, 
+				worker_ctx.get());
 			break;
 		case SHUFFLE_STAGE:
 			break;
@@ -128,7 +140,30 @@ void* JobContext::job_worker_thread(void* context)
 			// This should never happen
 			break;
 		}
+		old_val = job_context->inc_stage_processed();
 	}
+
+	// From this line - The current stage is finished and we should do post-processing
+}
+
+void* JobContext::job_worker_thread(void* context)
+{
+	assert(nullptr != context);
+
+	// Worker's context will be released upon thread termination
+	const std::shared_ptr<WorkerContext> worker_ctx(static_cast<WorkerContext*>(context));
+	JobContext* job_context = worker_ctx->jobContext;
+
+	/* MAP STAGE */
+	worker_handle_current_stage(worker_ctx);
+	// The map stage has been completed, sort the intermediate vector
+	std::sort(worker_ctx->intermediateVec.begin(), worker_ctx->intermediateVec.end());
+
+	// Wait for barrier
+	// Only shuffle takes control of the barrier
+	// Release barrier
+
+	// Do reduce stage
 
 	return nullptr;
 }

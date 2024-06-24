@@ -1,5 +1,6 @@
 ﻿// ex3-mapreduce.cpp : Defines the entry point for the application.
 //
+#include <atomic>
 #include <iostream>
 
 uint8_t _get_stage(uint64_t var)
@@ -46,6 +47,10 @@ void set_total(uint64_t& var, uint32_t total)
 
 int main()
 {
+	std::atomic<bool> a = false;
+	bool b = false;
+	a.compare_exchange_strong(b, true);
+	std::cout << a << std::endl;
 	uint64_t test = 0;
 	set_stage(test, 1);
 	set_total(test, 10);

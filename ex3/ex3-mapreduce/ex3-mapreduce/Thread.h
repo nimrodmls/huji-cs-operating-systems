@@ -1,3 +1,6 @@
+#ifndef THREAD_H
+#define THREAD_H
+
 #include <memory>
 
 // Entrypoint for a thread - Receives a ptr to the arguments
@@ -28,3 +31,5 @@ private:
 };
 
 using ThreadPtr = std::shared_ptr<Thread>;
+
+#endif // THREAD_H
