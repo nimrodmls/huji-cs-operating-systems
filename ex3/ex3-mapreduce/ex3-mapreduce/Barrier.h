@@ -4,15 +4,18 @@
 class Barrier
 {
 public:
-	Barrier(int numThreads);
+	Barrier(uint32_t numThreads);
+	Barrier(const Barrier&) = delete;
+	Barrier& operator=(const Barrier&) = delete;
 	~Barrier();
+
 	void barrier();
 
 private:
 	pthread_mutex_t mutex;
 	pthread_cond_t cv;
-	int count;
-	int numThreads;
+	uint32_t count;
+	uint32_t numThreads;
 };
 
 #endif //BARRIER_H

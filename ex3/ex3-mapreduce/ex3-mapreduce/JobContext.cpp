@@ -5,25 +5,35 @@
 JobContext::JobContext(
 	const InputVec& inputVec, 
 	OutputVec& outputVec, 
-	const MapReduceClient& client) :
+	const MapReduceClient& client,
+	uint32_t worker_count) :
 
 	m_stage(UNDEFINED_STAGE),
 	m_inputVec(inputVec),
 	m_outputVec(outputVec),
 	m_client(client),
+	m_shuffle_barrier(worker_count),
 	m_stageCnt(0),
 	m_shuffleAssign(false),
 	m_workers(),
 	m_workersIntermediate()
-{}
+{
+	for (uint32_t idx = 0; idx < worker_count; ++idx)
+	{
+		add_worker();
+	}
+}
 
 void JobContext::add_worker()
 {
+	// Allowing addition of workers only before the job has started
+	assert(UNDEFINED_STAGE == m_stage);
+
 	// Creating the worker's context
 	std::unique_ptr<WorkerContext> worker_ctx = std::make_unique<WorkerContext>();
 	worker_ctx->jobContext = this;
-	worker_ctx->worker_id = m_workers.size() - 1;
 	worker_ctx->intermediateVec = IntermediateVec();
+	m_workersIntermediate.push_back(worker_ctx->intermediateVec);
 
 	// Initialize the worker thread
 	ThreadPtr worker = std::make_shared<Thread>(job_worker_thread, worker_ctx.release());
@@ -126,11 +136,13 @@ void worker_handle_current_stage(const std::shared_ptr<WorkerContext> worker_ctx
 		switch (job_context->get_stage())
 		{
 		case MAP_STAGE:
-			const InputPair current_entry = job_context->get_input_vec()[old_val + 1];
-			job_context->get_client().map(
-				current_entry.first, 
-				current_entry.second, 
-				worker_ctx.get());
+			{
+				const InputPair current_entry = job_context->get_input_vec()[old_val + 1];
+				job_context->get_client().map(
+					current_entry.first, 
+					current_entry.second, 
+					worker_ctx.get());
+			}
 			break;
 		case SHUFFLE_STAGE:
 			break;
@@ -146,6 +158,49 @@ void worker_handle_current_stage(const std::shared_ptr<WorkerContext> worker_ctx
 	// From this line - The current stage is finished and we should do post-processing
 }
 
+void JobContext::worker_shuffle_stage(const std::shared_ptr<WorkerContext> worker_ctx)
+{
+	std::vector<IntermediateVec> workersIntermediate = 
+		worker_ctx->jobContext->get_workers_intermediate();
+
+	
+	IntermediateVec backPairs;
+	do
+	{
+		// Getting all the pairs at the back of each of the worker's intermediates
+		for (IntermediateVec& vec : workersIntermediate)
+		{
+			backPairs.emplace_back(vec.back());
+		}
+
+		for (auto it = workersIntermediate.begin(); it != workersIntermediate.end();)
+		{
+			it->pop_back();
+			backPairs.emplace_back(it->back());
+		}
+
+		// Extracting the maximal key value from the current back pairs, minimal is ignored
+		const auto minmax = std::minmax_element(
+			backPairs.begin(), 
+			backPairs.end(),
+			JobContext::pair_compare);
+		IntermediatePair max_key = *minmax.second;
+
+		// Removing all the keys that are not the maximal key
+		for (auto it = backPairs.begin(); it != backPairs.end();)
+		{
+			if (*it != max_key)
+			{
+				(void)backPairs.erase(it);
+			}
+		}
+
+		worker_ctx->jobContext->m_shuffleQueue.push(backPairs);
+
+	} while (!backPairs.empty());
+
+}
+
 void* JobContext::job_worker_thread(void* context)
 {
 	assert(nullptr != context);
@@ -156,12 +211,24 @@ void* JobContext::job_worker_thread(void* context)
 
 	/* MAP STAGE */
 	worker_handle_current_stage(worker_ctx);
-	// The map stage has been completed, sort the intermediate vector
-	std::sort(worker_ctx->intermediateVec.begin(), worker_ctx->intermediateVec.end());
+	// The map stage has been completed, sort the intermediate vector according to the key
+	std::sort(
+		worker_ctx->intermediateVec.begin(), 
+		worker_ctx->intermediateVec.end(), 
+		JobContext::pair_compare
+	);
 
-	// Wait for barrier
-	// Only shuffle takes control of the barrier
-	// Release barrier
+	// Waiting on the barrier for all the workers to complete their map stage
+	job_context->get_shuffle_barrier().barrier();
+	if (job_context->assign_shuffle_job())
+	{
+		// Shuffle stage is assigned to the current worker
+		job_context->set_stage(SHUFFLE_STAGE);
+		worker_shuffle_stage(worker_ctx);
+
+		// Shuffle is complete, allowing the beginning of the reduce stage
+		job_context->set_stage(REDUCE_STAGE);
+	}
 
 	// Do reduce stage
 

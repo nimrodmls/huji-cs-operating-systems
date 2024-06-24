@@ -3,13 +3,12 @@
 #include "Common.h"
 #include "Barrier.h"
 
-Barrier::Barrier(int numThreads) :
+Barrier::Barrier(uint32_t numThreads) :
 	mutex(PTHREAD_MUTEX_INITIALIZER),
 	cv(PTHREAD_COND_INITIALIZER),
 	count(0),
 	numThreads(numThreads)
 { }
-
 
 Barrier::~Barrier()
 {

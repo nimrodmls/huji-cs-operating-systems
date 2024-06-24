@@ -2,6 +2,7 @@
 //
 #include <atomic>
 #include <iostream>
+#include "MapReduceClient.h"
 
 uint8_t _get_stage(uint64_t var)
 {
@@ -45,9 +46,24 @@ void set_total(uint64_t& var, uint32_t total)
 	var |= (static_cast<uint64_t>(total) << 33);
 }
 
+class KChar : public K2 {
+public:
+	KChar(char c) : c(c) { }
+	virtual bool operator<(const K2& other) const {
+		return c < static_cast<const KChar&>(other).c;
+	}
+	char c;
+};
+
+class VCount : public V2 {
+public:
+	VCount(int count) : count(count) { }
+	int count;
+};
+
 int main()
 {
-	std::atomic<bool> a = false;
+	std::atomic<bool> a = true;
 	bool b = false;
 	a.compare_exchange_strong(b, true);
 	std::cout << a << std::endl;
@@ -60,5 +76,20 @@ int main()
 	std::cout << "Stage: " << static_cast<uint32_t>(_get_stage(test)) << std::endl;
 	std::cout << "Processed: " << _get_stage_processed(test) << std::endl;
 	std::cout << "Total: " << _get_stage_total(test) << std::endl;
+
+	std::vector<std::pair<KChar, VCount>> iv;
+	iv.emplace_back(std::make_pair<>('c', 50));
+	iv.emplace_back(std::make_pair<>('a', 60));
+	iv.emplace_back(std::make_pair<>('k', 20));
+	iv.emplace_back(std::make_pair<>('q', 10));
+	std::sort(iv.begin(), iv.end(), [](const std::pair<KChar, VCount>& a1, const std::pair<KChar, VCount>& a2)
+	{
+			return a1.first < a2.first;
+	});
+	auto m = std::minmax_element(iv.begin(), iv.end(), [](const std::pair<KChar, VCount>& a1, const std::pair<KChar, VCount>& a2)
+		{
+			return a1.first < a2.first;
+		});
+	std::cout << static_cast<uint32_t>(m.second->first.c) << std::endl;
 	return 0;
 }

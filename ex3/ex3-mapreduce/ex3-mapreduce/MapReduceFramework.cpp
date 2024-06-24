@@ -15,11 +15,8 @@ JobHandle startMapReduceJob(
 	OutputVec& outputVec,
 	int multiThreadLevel)
 {
-	JobContext* jobContext = new JobContext(inputVec, outputVec, client);
-	for (int32_t idx = 0; idx < multiThreadLevel; ++idx)
-	{
-		jobContext->add_worker();
-	}
+	JobContext* jobContext = new JobContext(
+		inputVec, outputVec, client, multiThreadLevel);
 	jobContext->start_job();
 
 	return jobContext;
