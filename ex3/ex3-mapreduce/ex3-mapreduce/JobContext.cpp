@@ -13,6 +13,9 @@ JobContext::JobContext(
 	m_outputVec(outputVec),
 	m_client(client),
 	m_shuffle_barrier(worker_count),
+	m_shuffle_semaphore(0),
+	m_output_mutex(),
+	m_reduce_mutex(),
 	m_stageCnt(0),
 	m_shuffleAssign(false),
 	m_workers(),
@@ -70,6 +73,13 @@ void JobContext::get_state(JobState* state) const
 	state->percentage = 0.0f;
 }
 
+void JobContext::add_output(K3* key, V3* value)
+{
+	m_output_mutex.lock();
+	m_outputVec.push_back(std::make_pair(key, value));
+	m_output_mutex.unlock();
+}
+
 stage_t JobContext::get_stage() const
 {
 	// The stage ID is stored in the 2 most significant bits of the counter
@@ -124,7 +134,7 @@ bool JobContext::assign_shuffle_job()
 	return m_shuffleAssign.compare_exchange_strong(val, true);
 }
 
-void worker_handle_current_stage(const std::shared_ptr<WorkerContext> worker_ctx)
+void JobContext::worker_handle_current_stage(const std::shared_ptr<WorkerContext> worker_ctx)
 {
 	JobContext* job_context = worker_ctx->jobContext;
 
@@ -147,10 +157,19 @@ void worker_handle_current_stage(const std::shared_ptr<WorkerContext> worker_ctx
 					worker_ctx.get());
 			}
 			break;
-		case SHUFFLE_STAGE:
-			break;
+
 		case REDUCE_STAGE:
+			{
+				job_context->m_reduce_mutex.lock();
+				const IntermediateVec current_entry = job_context->m_shuffleQueue.back();
+				job_context->m_shuffleQueue.pop_back();
+				job_context->m_reduce_mutex.unlock();
+				job_context->get_client().reduce(&current_entry, worker_ctx.get());
+			}
 			break;
+
+		case SHUFFLE_STAGE:
+			// fallthrough - shuffle is handled in a separate function
 		case UNDEFINED_STAGE:
 			// This should never happen
 			break;
@@ -204,7 +223,7 @@ void JobContext::worker_shuffle_stage(JobContext* job_context)
 			static_cast<uint32_t>(all_key_pairs.size()));
 
 		// The new intermediate vector is ready
-		job_context->m_shuffleQueue.push(backPairs);
+		job_context->m_shuffleQueue.push_back(backPairs);
 
 	} while (!backPairs.empty());
 }
@@ -228,6 +247,8 @@ void* JobContext::job_worker_thread(void* context)
 
 	// Waiting on the barrier for all the workers to complete their map stage
 	job_context->get_shuffle_barrier().barrier();
+
+	// Once done - Starting the shuffle phase on one thread
 	if (job_context->assign_shuffle_job())
 	{
 		// Shuffle stage is assigned to the current worker
@@ -237,8 +258,15 @@ void* JobContext::job_worker_thread(void* context)
 		// Shuffle is complete, allowing the beginning of the reduce stage
 		job_context->set_stage(REDUCE_STAGE);
 	}
+	else // Or waiting for the shuffle to end on the other threads
+	{
+		job_context->get_shuffle_semaphore().wait();
+	}
 
-	// Do reduce stage
+	// Allowing all the workers to continue to the reduce stage
+	job_context->get_shuffle_semaphore().post();
+
+	worker_handle_current_stage(worker_ctx);
 
 	return nullptr;
 }

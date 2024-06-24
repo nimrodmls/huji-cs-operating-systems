@@ -11,7 +11,8 @@ add_executable (ex3-mapreduce
 				"MapReduceClient.cpp" 
 				"Thread.cpp"
 				"JobContext.cpp"
-				"Barrier.cpp")
+				"Barrier.cpp"
+				"Semaphore.cpp" "Mutex.cpp")
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)
   set_property(TARGET ex3-mapreduce PROPERTY CXX_STANDARD 20)

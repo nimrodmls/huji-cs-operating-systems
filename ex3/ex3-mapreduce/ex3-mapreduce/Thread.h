@@ -7,9 +7,8 @@
 // Allocation and access to the arguments is at the responsibility of the caller
 using ThreadEntrypoint = void* (*)(void*);
 
-/* A class representing a thread
- * Note - On failure of system calls, the program will exit
- */
+/* RAII Wrapper for a class representing a thread
+ * Note - On failure of system calls, the program will exit */
 class Thread
 {
 public:

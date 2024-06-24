@@ -7,6 +7,8 @@
 #include "MapReduceFramework.h"
 #include "Thread.h"
 #include "Barrier.h"
+#include "Mutex.h"
+#include "Semaphore.h"
 
 class JobContext;
 struct WorkerContext
@@ -38,6 +40,8 @@ public:
 	// Retreiving the current state of the job
 	void get_state(JobState* state) const;
 
+	void add_output(K3* key, V3* value);
+
 	// TODO: Make these functions private
 	stage_t get_stage() const;
 	uint32_t get_stage_processed() const;
@@ -51,6 +55,7 @@ public:
 	InputVec& get_input_vec() { return m_inputVec; }
 	const MapReduceClient& get_client() const { return m_client; }
 	Barrier& get_shuffle_barrier() { return m_shuffle_barrier; }
+	Semaphore& get_shuffle_semaphore() { return m_shuffle_semaphore; }
 	std::vector<IntermediateVec>& get_workers_intermediate() { return m_workersIntermediate; }
 
 private:
@@ -64,20 +69,28 @@ private:
 
 	/* Entrypoint for a job worker thread
 	 * The worker thread will execute map-sort-reduce operations */
-	static void* job_worker_thread(void* context);
+	static void worker_handle_current_stage(
+		const std::shared_ptr<WorkerContext> worker_ctx);
+
 	static void worker_shuffle_stage(JobContext* job_context);
+
+	static void* job_worker_thread(void* context);
+
 	static bool pair_compare(
 		const IntermediatePair& elem1, 
 		const IntermediatePair& elem2)
-	{
-		return elem1.first < elem2.first;
-	}
+	{ return elem1.first < elem2.first; }
 
 	stage_t m_stage;
 	InputVec m_inputVec;
 	OutputVec m_outputVec;
 	const MapReduceClient& m_client;
 	Barrier m_shuffle_barrier;
+	Semaphore m_shuffle_semaphore;
+	// Mutex for synchronizing access to the output vector when reducing (add_output)
+	Mutex m_output_mutex;
+	// Mutex for synchronizing access to the shuffle queue when reducing (worker)
+	Mutex m_reduce_mutex;
 	/* The stage counter is a 64-bit bitfield, with the following structure:
 	 * 31-bit processed entries counter, 31-bit total entries counter, 2-bit stage ID */
 	std::atomic<uint64_t> m_stageCnt;
@@ -85,7 +98,7 @@ private:
 	std::atomic<bool> m_shuffleAssign;
 	std::vector<ThreadPtr> m_workers;
 	std::vector<IntermediateVec> m_workersIntermediate;
-	std::queue<IntermediateVec> m_shuffleQueue;
+	std::vector<IntermediateVec> m_shuffleQueue;
 };
 
 #endif // JOB_CONTEXT_H
