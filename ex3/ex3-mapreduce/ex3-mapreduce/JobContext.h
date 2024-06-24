@@ -8,10 +8,6 @@
 #include "Thread.h"
 #include "Barrier.h"
 
-// This abomination is a queue of pairs, of intermediate key and its
-// correspoding vector of values collected from all the workers
-using shuffle_queue = std::priority_queue<std::pair<K2*, std::vector<V2*>>>;
-
 class JobContext;
 struct WorkerContext
 {
@@ -49,7 +45,7 @@ public:
 
 	void set_stage(stage_t new_stage);
 	void reset_stage_processed();
-	uint32_t inc_stage_processed();
+	uint32_t inc_stage_processed(uint32_t val);
 	void set_stage_total(uint32_t total);
 
 	InputVec& get_input_vec() { return m_inputVec; }
@@ -69,7 +65,7 @@ private:
 	/* Entrypoint for a job worker thread
 	 * The worker thread will execute map-sort-reduce operations */
 	static void* job_worker_thread(void* context);
-	static void worker_shuffle_stage(const std::shared_ptr<WorkerContext> worker_ctx);
+	static void worker_shuffle_stage(JobContext* job_context);
 	static bool pair_compare(
 		const IntermediatePair& elem1, 
 		const IntermediatePair& elem2)
@@ -89,7 +85,7 @@ private:
 	std::atomic<bool> m_shuffleAssign;
 	std::vector<ThreadPtr> m_workers;
 	std::vector<IntermediateVec> m_workersIntermediate;
-	shuffle_queue m_shuffleQueue;
+	std::queue<IntermediateVec> m_shuffleQueue;
 };
 
 #endif // JOB_CONTEXT_H

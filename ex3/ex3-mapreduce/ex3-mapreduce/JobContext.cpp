@@ -18,6 +18,9 @@ JobContext::JobContext(
 	m_workers(),
 	m_workersIntermediate()
 {
+	assert(0 < worker_count);
+	assert(!inputVec.empty());
+
 	for (uint32_t idx = 0; idx < worker_count; ++idx)
 	{
 		add_worker();
@@ -101,10 +104,10 @@ void JobContext::reset_stage_processed()
 	m_stageCnt &= ~(0x7FFFFFFFULL);
 }
 
-uint32_t JobContext::inc_stage_processed()
+uint32_t JobContext::inc_stage_processed(uint32_t val)
 {
 	// Increment the processed count
-	return (m_stageCnt++ << 33) >> 33; // (m_stageCnt.fetch_add(0x1ULL) << 33) >> 33;
+	return (m_stageCnt.fetch_add(val) << 33) >> 33;
 }
 
 void JobContext::set_stage_total(uint32_t total)
@@ -126,7 +129,7 @@ void worker_handle_current_stage(const std::shared_ptr<WorkerContext> worker_ctx
 	JobContext* job_context = worker_ctx->jobContext;
 
 	// Incrementing the processed count, and checking if the stage is complete
-	uint32_t old_val = job_context->inc_stage_processed();
+	uint32_t old_val = job_context->inc_stage_processed(1);
 	// Stage is complete - Note that it's either complete if the processed
 	// count is higher than the total count, or if the processed count overflowed 31 bits
 	// (hence the stage total would be overwritten and corrupted)
@@ -152,31 +155,31 @@ void worker_handle_current_stage(const std::shared_ptr<WorkerContext> worker_ctx
 			// This should never happen
 			break;
 		}
-		old_val = job_context->inc_stage_processed();
+		old_val = job_context->inc_stage_processed(1);
 	}
 
 	// From this line - The current stage is finished and we should do post-processing
 }
 
-void JobContext::worker_shuffle_stage(const std::shared_ptr<WorkerContext> worker_ctx)
+void JobContext::worker_shuffle_stage(JobContext* job_context)
 {
 	std::vector<IntermediateVec> workersIntermediate = 
-		worker_ctx->jobContext->get_workers_intermediate();
+		job_context->get_workers_intermediate();
 
+	// Resetting the processed count for the shuffle stage -
+	// The total to process remains the same
+	job_context->reset_stage_processed();
 	
 	IntermediateVec backPairs;
+	// Expecting at least 1 non-empty worker intermediate vector,
+	// otherwise we will insert an empty vector into the shuffle queue
+	// this is probably a safe assumption as it means that the input is empty.
 	do
 	{
 		// Getting all the pairs at the back of each of the worker's intermediates
 		for (IntermediateVec& vec : workersIntermediate)
 		{
 			backPairs.emplace_back(vec.back());
-		}
-
-		for (auto it = workersIntermediate.begin(); it != workersIntermediate.end();)
-		{
-			it->pop_back();
-			backPairs.emplace_back(it->back());
 		}
 
 		// Extracting the maximal key value from the current back pairs, minimal is ignored
@@ -186,19 +189,24 @@ void JobContext::worker_shuffle_stage(const std::shared_ptr<WorkerContext> worke
 			JobContext::pair_compare);
 		IntermediatePair max_key = *minmax.second;
 
-		// Removing all the keys that are not the maximal key
-		for (auto it = backPairs.begin(); it != backPairs.end();)
+		// Finding all the pairs with the maximal key, in the intermediate vectors
+		IntermediateVec all_key_pairs;
+		for (IntermediateVec& vec : workersIntermediate)
 		{
-			if (*it != max_key)
+			while (!vec.empty() && vec.back() < max_key)
 			{
-				(void)backPairs.erase(it);
+				all_key_pairs.emplace_back(vec.back());
+				vec.pop_back();
 			}
 		}
 
-		worker_ctx->jobContext->m_shuffleQueue.push(backPairs);
+		job_context->inc_stage_processed(
+			static_cast<uint32_t>(all_key_pairs.size()));
+
+		// The new intermediate vector is ready
+		job_context->m_shuffleQueue.push(backPairs);
 
 	} while (!backPairs.empty());
-
 }
 
 void* JobContext::job_worker_thread(void* context)
@@ -224,7 +232,7 @@ void* JobContext::job_worker_thread(void* context)
 	{
 		// Shuffle stage is assigned to the current worker
 		job_context->set_stage(SHUFFLE_STAGE);
-		worker_shuffle_stage(worker_ctx);
+		worker_shuffle_stage(job_context);
 
 		// Shuffle is complete, allowing the beginning of the reduce stage
 		job_context->set_stage(REDUCE_STAGE);
