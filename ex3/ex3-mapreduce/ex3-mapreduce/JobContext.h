@@ -11,12 +11,19 @@
 #include "Semaphore.h"
 
 class JobContext;
-struct WorkerContext
+class WorkerContext
 {
+public:
+	WorkerContext(
+		JobContext* job_context,
+		IntermediateVec& intermediate_vec) :
+		jobContext(job_context),
+		intermediateVec(intermediate_vec)
+	{}
 	// Reference to the owning job context
 	JobContext* jobContext;
 	// The worker's intermediate vector
-	IntermediateVec intermediateVec;
+	IntermediateVec& intermediateVec;
 };
 
 class JobContext
@@ -56,7 +63,6 @@ public:
 	const MapReduceClient& get_client() const { return m_client; }
 	Barrier& get_shuffle_barrier() { return m_shuffle_barrier; }
 	Semaphore& get_shuffle_semaphore() { return m_shuffle_semaphore; }
-	std::vector<IntermediateVec>& get_workers_intermediate() { return m_workersIntermediate; }
 
 private:
 	// Adding a worker thread
@@ -79,11 +85,13 @@ private:
 	static bool pair_compare(
 		const IntermediatePair& elem1, 
 		const IntermediatePair& elem2)
-	{ return elem1.first < elem2.first; }
+	{
+		return *((K2*)elem1.first) < *((K2*)elem2.first);
+	}
 
-	stage_t m_stage;
+	float m_percentage;
 	InputVec m_inputVec;
-	OutputVec m_outputVec;
+	OutputVec& m_outputVec;
 	const MapReduceClient& m_client;
 	Barrier m_shuffle_barrier;
 	Semaphore m_shuffle_semaphore;
