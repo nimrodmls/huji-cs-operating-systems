@@ -35,7 +35,7 @@ namespace Common
 	{
 		// The total count is stored in the 31 "middle" bits of the counter
 		// (between the stage ID and the processed count)
-		return (state >> 33) & 0x7FFFULL;
+		return (state & (0xFFFFFFFFFFFFFFFF >> 2)) >> 33;
 	}
 
 	inline stage_t get_stage(uint64_t state)
