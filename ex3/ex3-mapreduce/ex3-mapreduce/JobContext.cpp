@@ -68,9 +68,17 @@ void JobContext::wait() const
 
 void JobContext::get_state(JobState* state) const
 {
-	state->stage = get_stage();
-	// TODO: Implement the percentage calculation
-	state->percentage = m_percentage;
+	// First loading the current stage and preserving it,
+	// as it might change while this function runs
+	// (e.g. the stage may change, and we would give out the wrong percentage)
+	const uint64_t current_state = m_stageCnt.load();
+	state->stage = Common::get_stage(current_state);
+	const uint32_t total_entries = Common::get_stage_total(current_state);
+	state->percentage = 100.0f *
+		// Taking the minimum since the processed data can be "more" while the
+		// threads are validating they're not out of bounds
+		static_cast<float>(std::min(Common::get_stage_processed(current_state), total_entries)) / 
+		static_cast<float>(total_entries);
 }
 
 void JobContext::add_output(K3* key, V3* value)
@@ -83,21 +91,21 @@ void JobContext::add_output(K3* key, V3* value)
 stage_t JobContext::get_stage() const
 {
 	// The stage ID is stored in the 2 most significant bits of the counter
-	return static_cast<stage_t>(m_stageCnt.load() >> 62);
+	return Common::get_stage(m_stageCnt.load());
 }
 
 uint32_t JobContext::get_stage_processed() const
 {
 	// The processed count is stored in the 31 least significant bits of the counter
 	// (after the total count)
-	return (m_stageCnt.load() << 33) >> 33;
+	return Common::get_stage_processed(m_stageCnt.load());
 }
 
 uint32_t JobContext::get_stage_total() const
 {
 	// The total count is stored in the 31 "middle" bits of the counter
 	// (between the stage ID and the processed count)
-	return (m_stageCnt.load() >> 33) & 0x7FFFULL;
+	return Common::get_stage_total(m_stageCnt.load());
 }
 
 void JobContext::set_stage(stage_t new_stage)
@@ -144,7 +152,7 @@ void JobContext::worker_handle_current_stage(const std::shared_ptr<WorkerContext
 	// count is higher than the total count, or if the processed count overflowed 31 bits
 	// (hence the stage total would be overwritten and corrupted)
 	// TODO: Overflow check is incomplete
-	while ((old_val < job_context->get_stage_total()) && (0xFFFFFFFF >> 1) > old_val)
+	while (old_val < job_context->get_stage_total())
 	{
 		switch (job_context->get_stage())
 		{
@@ -176,8 +184,6 @@ void JobContext::worker_handle_current_stage(const std::shared_ptr<WorkerContext
 		}
 		old_val = job_context->inc_stage_processed(1);
 	}
-	std::cout << "stop" << std::endl;
-	// From this line - The current stage is finished and we should do post-processing
 }
 
 void JobContext::worker_shuffle_stage(JobContext* job_context)
