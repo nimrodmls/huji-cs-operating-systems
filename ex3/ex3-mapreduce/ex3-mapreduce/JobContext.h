@@ -15,16 +15,17 @@ class WorkerContext
 {
 public:
 	WorkerContext(
-		JobContext* job_context,
-		IntermediateVec& intermediate_vec) :
+		JobContext* job_context) :
 		jobContext(job_context),
-		intermediateVec(intermediate_vec)
+		intermediateVec()
 	{}
 	// Reference to the owning job context
 	JobContext* jobContext;
 	// The worker's intermediate vector
-	IntermediateVec& intermediateVec;
+	IntermediateVec intermediateVec;
 };
+
+using WorkerContextUPtr = std::unique_ptr<WorkerContext>;
 
 class JobContext
 {
@@ -36,6 +37,8 @@ public:
 		uint32_t worker_count);
 	JobContext(const JobContext&) = delete;
 	JobContext& operator=(const JobContext&) = delete;
+	// The dtor is not waiting for the worker threads to finish
+	// it is in the responsibility of the caller to wait for the job to finish
 	~JobContext() = default;
 
 	// Starting the job, by starting all the worker threads
@@ -76,20 +79,12 @@ private:
 	/* Entrypoint for a job worker thread
 	 * The worker thread will execute map-sort-reduce operations */
 	static void worker_handle_current_stage(
-		const std::shared_ptr<WorkerContext> worker_ctx);
+		WorkerContext* worker_ctx);
 
 	static void worker_shuffle_stage(JobContext* job_context);
 
 	static void* job_worker_thread(void* context);
 
-	static bool pair_compare(
-		const IntermediatePair& elem1, 
-		const IntermediatePair& elem2)
-	{
-		return *((K2*)elem1.first) < *((K2*)elem2.first);
-	}
-
-	float m_percentage;
 	InputVec m_inputVec;
 	OutputVec& m_outputVec;
 	const MapReduceClient& m_client;
@@ -105,7 +100,7 @@ private:
 	// Boolean flag to indicate whether the shuffle job has been assigned to one of the workers
 	std::atomic<bool> m_shuffleAssign;
 	std::vector<ThreadPtr> m_workers;
-	std::vector<IntermediateVec> m_workersIntermediate;
+	std::vector<WorkerContextUPtr> m_workersContext;
 	std::vector<IntermediateVec> m_shuffleQueue;
 };
 

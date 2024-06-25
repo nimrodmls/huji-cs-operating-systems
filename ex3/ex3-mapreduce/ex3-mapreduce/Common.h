@@ -14,12 +14,12 @@ namespace Common
 		exit(1);
 	}
 
-	inline bool key_less_than(IntermediatePair& p1, IntermediatePair& p2)
+	inline bool key_less_than(const IntermediatePair& p1, const IntermediatePair& p2)
 	{
 		return *p1.first < *p2.first;
 	}
 
-	inline bool key_equals(IntermediatePair& p1, IntermediatePair& p2)
+	inline bool key_equals(const IntermediatePair& p1, const IntermediatePair& p2)
 	{
 		return !key_less_than(p1, p2) && !key_less_than(p2, p1);
 	}
