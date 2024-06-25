@@ -1,5 +1,6 @@
 #include <cassert>
-#include <iostream>
+#include <memory>
+#include <algorithm>
 
 #include "Common.h"
 #include "JobContext.h"
@@ -39,7 +40,7 @@ void JobContext::add_worker()
 	// Creating the worker's context
 	m_workersIntermediate.emplace_back();
 	std::unique_ptr<WorkerContext> worker_ctx(
-		std::make_unique<WorkerContext>(this, m_workersIntermediate.back()));
+		new WorkerContext(this, m_workersIntermediate.back()));
 
 	// Initialize the worker thread
 	ThreadPtr worker = std::make_shared<Thread>(job_worker_thread, worker_ctx.release());

@@ -1,4 +1,4 @@
-﻿# CMakeList.txt : CMake project for ex3-mapreduce, include source and define
+# CMakeList.txt : CMake project for ex3-mapreduce, include source and define
 # project specific logic here.
 #
 
@@ -12,10 +12,11 @@ add_executable (ex3-mapreduce
 				"Thread.cpp"
 				"JobContext.cpp"
 				"Barrier.cpp"
-				"Semaphore.cpp" "Mutex.cpp")
+				"Semaphore.cpp" 
+				"Mutex.cpp"
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)
-  set_property(TARGET ex3-mapreduce PROPERTY CXX_STANDARD 20)
+  set_property(TARGET ex3-mapreduce PROPERTY CXX_STANDARD 11)
 endif()
 
 target_link_libraries(ex3-mapreduce ${CMAKE_THREAD_LIBS_INIT})
