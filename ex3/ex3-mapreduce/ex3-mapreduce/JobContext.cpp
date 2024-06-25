@@ -123,7 +123,7 @@ uint32_t JobContext::inc_stage_processed(uint32_t val)
 void JobContext::set_stage_total(uint32_t total)
 {
 	// Clear the total count bits
-	m_stageCnt &= ~(0x7FFFFFFFULL);
+	m_stageCnt &= 0x7FFFFFFFULL | (0x3ULL << 62);
 	// Set the new total count bits
 	m_stageCnt |= (static_cast<uint64_t>(total) << 33);
 }
@@ -176,7 +176,7 @@ void JobContext::worker_handle_current_stage(const std::shared_ptr<WorkerContext
 		}
 		old_val = job_context->inc_stage_processed(1);
 	}
-
+	std::cout << "stop" << std::endl;
 	// From this line - The current stage is finished and we should do post-processing
 }
 
@@ -190,11 +190,14 @@ void JobContext::worker_shuffle_stage(JobContext* job_context)
 	job_context->reset_stage_processed();
 	
 	IntermediateVec backPairs;
+	uint32_t total_size = 0;
 	// Getting all the pairs at the back of each of the worker's intermediates
 	for (IntermediateVec& vec : workersIntermediate)
 	{
+		total_size += static_cast<uint32_t>(vec.size());
 		backPairs.emplace_back(vec.back());
 	}
+	job_context->set_stage_total(total_size);
 
 	while (!backPairs.empty())
 	{
@@ -220,7 +223,7 @@ void JobContext::worker_shuffle_stage(JobContext* job_context)
 			static_cast<uint32_t>(all_key_pairs.size()));
 
 		// The new intermediate vector is ready
-		job_context->m_shuffleQueue.push_back(backPairs);
+		job_context->m_shuffleQueue.push_back(all_key_pairs);
 
 		backPairs.clear();
 		for (IntermediateVec& vec : workersIntermediate)
@@ -268,6 +271,7 @@ void* JobContext::job_worker_thread(void* context)
 		job_context->m_percentage = 0.0f;
 		job_context->set_stage(REDUCE_STAGE);
 		job_context->reset_stage_processed();
+		job_context->set_stage_total(static_cast<uint32_t>(job_context->m_shuffleQueue.size()));
 	}
 	else // Or waiting for the shuffle to end on the other threads
 	{
