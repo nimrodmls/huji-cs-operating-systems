@@ -8,7 +8,7 @@
 #include "Thread.h"
 #include "Barrier.h"
 #include "Mutex.h"
-#include "Semaphore.h"
+#include "CSemaphore.h"
 
 class Job;
 
@@ -107,7 +107,7 @@ private:
 	OutputVec& m_outputVec;
 	const MapReduceClient& m_client;
 	Barrier m_shuffle_barrier;
-	Semaphore m_shuffle_semaphore;
+	CSemaphore m_shuffle_semaphore;
 	// Mutex for synchronizing access to the output vector when reducing (add_output)
 	MutexPtr m_output_mutex;
 	// Mutex for synchronizing access to the shuffle queue when reducing (worker)

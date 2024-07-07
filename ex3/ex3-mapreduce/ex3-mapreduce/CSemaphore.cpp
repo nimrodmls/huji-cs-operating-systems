@@ -1,11 +1,11 @@
 #include "Common.h"
-#include "Semaphore.h"
+#include "CSemaphore.h"
 
-Semaphore::Semaphore(uint32_t initial) :
+CSemaphore::CSemaphore(uint32_t initial) :
 	m_semaphore(create_semaphore(initial))
 {}
 
-Semaphore::~Semaphore()
+CSemaphore::~CSemaphore()
 {
 	if (0 != sem_destroy(&m_semaphore))
 	{
@@ -13,7 +13,7 @@ Semaphore::~Semaphore()
 	}
 }
 
-void Semaphore::wait()
+void CSemaphore::wait()
 {
 	if (0 != sem_wait(&m_semaphore))
 	{
@@ -21,7 +21,7 @@ void Semaphore::wait()
 	}
 }
 
-void Semaphore::post()
+void CSemaphore::post()
 {
 	if (0 != sem_post(&m_semaphore))
 	{
@@ -29,7 +29,7 @@ void Semaphore::post()
 	}
 }
 
-sem_t Semaphore::create_semaphore(uint32_t initial)
+sem_t CSemaphore::create_semaphore(uint32_t initial)
 {
 	sem_t sem;
 	if (0 != sem_init(&sem, 0, initial))

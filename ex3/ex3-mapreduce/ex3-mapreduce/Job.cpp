@@ -20,7 +20,9 @@ Job::Job(
 	m_reduce_mutex(std::make_shared<Mutex>()),
 	m_stage_status(0),
 	m_shuffleAssign(false),
-	m_workers()
+	m_workers(),
+	m_workers_context(),
+	m_shuffle_queue()
 {
 	assert(0 < worker_count);
 	assert(!inputVec.empty());
