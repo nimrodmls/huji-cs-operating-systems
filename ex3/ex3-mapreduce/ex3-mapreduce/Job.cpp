@@ -3,9 +3,9 @@
 #include <algorithm>
 
 #include "Common.h"
-#include "JobContext.h"
+#include "Job.h"
 
-JobContext::JobContext(
+Job::Job(
 	const InputVec& inputVec, 
 	OutputVec& outputVec, 
 	const MapReduceClient& client,
@@ -31,21 +31,7 @@ JobContext::JobContext(
 	}
 }
 
-void JobContext::add_worker()
-{
-	// Allowing addition of workers only before the job has started
-	assert(UNDEFINED_STAGE == get_stage());
-
-	// Creating the worker's context
-	WorkerContext* worker_ctx = new WorkerContext(this);
-
-	// Initialize the worker thread
-	ThreadPtr worker = std::make_shared<Thread>(job_worker_thread, worker_ctx);
-	m_workers.push_back(worker);
-	m_workersContext.emplace_back(worker_ctx);
-}
-
-void JobContext::start_job()
+void Job::start_job()
 {
 	assert(UNDEFINED_STAGE == get_stage());
 
@@ -56,7 +42,7 @@ void JobContext::start_job()
 	}
 }
 
-void JobContext::wait()
+void Job::wait()
 {
 	for (const auto& worker : m_workers)
 	{
@@ -67,7 +53,7 @@ void JobContext::wait()
 	m_workers.clear();
 }
 
-void JobContext::get_state(JobState* state) const
+void Job::get_state(JobState* state) const
 {
 	// First loading the current stage and preserving it,
 	// as it might change while this function runs
@@ -82,26 +68,40 @@ void JobContext::get_state(JobState* state) const
 		static_cast<float>(total_entries);
 }
 
-void JobContext::add_output(K3* key, V3* value)
+void Job::add_output(K3* key, V3* value)
 {
 	AutoMutexLock lock(m_output_mutex);
 	m_outputVec.push_back(std::make_pair(key, value));
 }
 
-stage_t JobContext::get_stage() const
+void Job::add_worker()
+{
+	// Allowing addition of workers only before the job has started
+	assert(UNDEFINED_STAGE == get_stage());
+
+	// Creating the worker's context
+	WorkerContext* worker_ctx = new WorkerContext(this);
+
+	// Initialize the worker thread
+	ThreadPtr worker = std::make_shared<Thread>(job_worker_thread, worker_ctx);
+	m_workers.push_back(worker);
+	m_workers_context.emplace_back(worker_ctx);
+}
+
+stage_t Job::get_stage() const
 {
 	// The stage ID is stored in the 2 most significant bits of the counter
 	return Common::get_stage(m_stage_status.load());
 }
 
-uint32_t JobContext::get_stage_total() const
+uint32_t Job::get_stage_total() const
 {
 	// The total count is stored in the 31 "middle" bits of the counter
 	// (between the stage ID and the processed count)
 	return Common::get_stage_total(m_stage_status.load());
 }
 
-void JobContext::set_stage(stage_t new_stage, uint32_t total)
+void Job::set_stage(stage_t new_stage, uint32_t total)
 {
 	// Clear the stage bits
 	//m_stage_status &= ~(0x3ULL << 62);
@@ -110,23 +110,23 @@ void JobContext::set_stage(stage_t new_stage, uint32_t total)
 	m_stage_status = (static_cast<uint64_t>(new_stage) << 62) | (static_cast<uint64_t>(total) << 31);
 }
 
-uint32_t JobContext::inc_stage_processed(uint32_t val)
+uint32_t Job::inc_stage_processed(uint32_t val)
 {
 	// Increment the processed count
 	return (m_stage_status.fetch_add(val) << 33) >> 33;
 }
 
-bool JobContext::assign_shuffle_job()
+bool Job::assign_shuffle_job()
 {
 	bool val = false;
 	return m_shuffleAssign.compare_exchange_strong(val, true);
 }
 
-void JobContext::worker_handle_current_stage(WorkerContext* worker_ctx)
+void Job::worker_handle_current_stage(WorkerContext* worker_ctx)
 {
 	assert(nullptr != worker_ctx);
 
-	JobContext* job_context = worker_ctx->jobContext;
+	Job* job_context = worker_ctx->jobContext;
 
 	// Incrementing the processed count, and checking if the stage is complete
 	uint32_t old_val = job_context->inc_stage_processed(1);
@@ -136,8 +136,8 @@ void JobContext::worker_handle_current_stage(WorkerContext* worker_ctx)
 		{
 		case MAP_STAGE:
 			{
-				const InputPair current_entry = job_context->get_input_vec()[old_val];
-				job_context->get_client().map(
+				const InputPair current_entry = job_context->m_inputVec[old_val];
+				job_context->m_client.map(
 					current_entry.first, 
 					current_entry.second,
 					worker_ctx);
@@ -147,10 +147,10 @@ void JobContext::worker_handle_current_stage(WorkerContext* worker_ctx)
 		case REDUCE_STAGE:
 			{
 				job_context->m_reduce_mutex->lock();
-				const IntermediateVec current_entry = job_context->m_shuffleQueue.back();
-				job_context->m_shuffleQueue.pop_back();
+				const IntermediateVec current_entry = job_context->m_shuffle_queue.back();
+				job_context->m_shuffle_queue.pop_back();
 				job_context->m_reduce_mutex->unlock();
-				job_context->get_client().reduce(&current_entry, worker_ctx);
+				job_context->m_client.reduce(&current_entry, worker_ctx);
 			}
 			break;
 
@@ -164,14 +164,14 @@ void JobContext::worker_handle_current_stage(WorkerContext* worker_ctx)
 	}
 }
 
-void JobContext::worker_shuffle_stage(JobContext* job_context)
+void Job::worker_shuffle_stage(Job* job_context)
 {
 	assert(nullptr != job_context);
 	
 	IntermediateVec backPairs;
 	uint32_t total_size = 0;
 	// Getting all the pairs at the back of each of the worker's intermediates, only non-empty
-	for (const auto& worker : job_context->m_workersContext)
+	for (const auto& worker : job_context->m_workers_context)
 	{
 		IntermediateVec& vec = worker->intermediateVec;
 		if (!vec.empty())
@@ -194,7 +194,7 @@ void JobContext::worker_shuffle_stage(JobContext* job_context)
 
 		// Finding all the pairs with the maximal key, in the intermediate vectors
 		IntermediateVec all_key_pairs;
-		for (const auto& worker : job_context->m_workersContext)
+		for (const auto& worker : job_context->m_workers_context)
 		{
 			IntermediateVec& vec = worker->intermediateVec;
 			while (!vec.empty() && Common::key_equals(vec.back(), max_key))
@@ -208,10 +208,10 @@ void JobContext::worker_shuffle_stage(JobContext* job_context)
 			static_cast<uint32_t>(all_key_pairs.size()));
 
 		// The new intermediate vector is ready
-		job_context->m_shuffleQueue.push_back(all_key_pairs);
+		job_context->m_shuffle_queue.push_back(all_key_pairs);
 
 		backPairs.clear();
-		for (const auto& worker : job_context->m_workersContext)
+		for (const auto& worker : job_context->m_workers_context)
 		{
 			IntermediateVec& vec = worker->intermediateVec;
 			if (!vec.empty())
@@ -222,12 +222,12 @@ void JobContext::worker_shuffle_stage(JobContext* job_context)
 	} 
 }
 
-void* JobContext::job_worker_thread(void* context)
+void* Job::job_worker_thread(void* context)
 {
 	assert(nullptr != context);
 
 	WorkerContext* worker_ctx = static_cast<WorkerContext*>(context);
-	JobContext* job_context = worker_ctx->jobContext;
+	Job* job_context = worker_ctx->jobContext;
 
 	/*** MAP STAGE ***/
 	worker_handle_current_stage(worker_ctx);
@@ -239,7 +239,7 @@ void* JobContext::job_worker_thread(void* context)
 	);
 
 	// Waiting on the barrier for all the workers to complete their map stage
-	job_context->get_shuffle_barrier().barrier();
+	job_context->m_shuffle_barrier.barrier();
 
 	/*** SHUFFLE STAGE - ONE WORKER ONLY ***/
 	// Once done - Starting the shuffle phase on one thread
@@ -250,15 +250,15 @@ void* JobContext::job_worker_thread(void* context)
 
 		// Shuffle is complete, allowing the beginning of the reduce stage
 		job_context->set_stage(
-			REDUCE_STAGE, static_cast<uint32_t>(job_context->m_shuffleQueue.size()));
+			REDUCE_STAGE, static_cast<uint32_t>(job_context->m_shuffle_queue.size()));
 	}
 	else // Or waiting for the shuffle to end on the other threads
 	{
-		job_context->get_shuffle_semaphore().wait();
+		job_context->m_shuffle_semaphore.wait();
 	}
 
 	// Allowing all the workers to continue to the reduce stage
-	job_context->get_shuffle_semaphore().post();
+	job_context->m_shuffle_semaphore.post();
 
 	/*** REDUCE STAGE ***/
 	worker_handle_current_stage(worker_ctx);

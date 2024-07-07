@@ -21,9 +21,10 @@ public:
 	void run();
 
 	// Waiting on the thread
-	void join() const;
+	void join();
 
 private:
+	bool m_joined;
 	pthread_t m_thread;
 	void* m_ep_args;
 	ThreadEntrypoint m_entrypoint;

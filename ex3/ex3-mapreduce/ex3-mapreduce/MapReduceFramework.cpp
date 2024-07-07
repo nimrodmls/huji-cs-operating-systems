@@ -3,7 +3,7 @@
 #include "MapReduceFramework.h"
 
 
-#include "JobContext.h"
+#include "Job.h"
 
 void emit2(K2* key, V2* value, void* context)
 {
@@ -27,7 +27,7 @@ JobHandle startMapReduceJob(
 	OutputVec& outputVec,
 	int multiThreadLevel)
 {
-	JobContext* jobContext = new JobContext(
+	Job* jobContext = new Job(
 		inputVec, outputVec, client, multiThreadLevel);
 	jobContext->start_job();
 
@@ -36,19 +36,19 @@ JobHandle startMapReduceJob(
 
 void waitForJob(JobHandle job)
 {
-	JobContext* jobContext = static_cast<JobContext*>(job);
+	Job* jobContext = static_cast<Job*>(job);
 	jobContext->wait();
 }
 
 void getJobState(JobHandle job, JobState* state)
 {
-	JobContext* jobContext = static_cast<JobContext*>(job);
+	Job* jobContext = static_cast<Job*>(job);
 	jobContext->get_state(state);
 }
 
 void closeJobHandle(JobHandle job)
 {
 	waitForJob(job);
-	JobContext* jobContext = static_cast<JobContext*>(job);
+	Job* jobContext = static_cast<Job*>(job);
 	delete jobContext;
 }

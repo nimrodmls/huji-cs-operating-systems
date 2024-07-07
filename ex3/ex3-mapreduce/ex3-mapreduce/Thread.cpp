@@ -4,6 +4,7 @@
 #include "Common.h"
 
 Thread::Thread(const ThreadEntrypoint& entrypoint, void* args) :
+	m_joined(false),
 	m_thread(),
 	m_ep_args(args),
 	m_entrypoint(entrypoint)
@@ -18,12 +19,18 @@ void Thread::run()
 	}
 }
 
-void Thread::join() const
+void Thread::join()
 {
-	const int status = pthread_join(m_thread, nullptr);
-	// ESRCH is returned if the thread has already been joined, which is not an error
-	if ((0 != status) && (ESRCH != status))
+	// Note that we allow a thread to be joined ONCE.
+	// Otherwise, undefined behavior will occur.
+	if (!m_joined)
 	{
-		Common::emit_system_error("pthread_join failed");
+		const int status = pthread_join(m_thread, nullptr);
+		// ESRCH is returned if the thread has already been joined, which is not an error
+		if ((0 != status) && (ESRCH != status))
+		{
+			Common::emit_system_error("pthread_join failed");
+		}
+		m_joined = true;
 	}
 }
