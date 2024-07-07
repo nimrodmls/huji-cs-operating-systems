@@ -21,7 +21,8 @@ void Thread::run()
 void Thread::join() const
 {
 	const int status = pthread_join(m_thread, nullptr);
-	if (0 != status)
+	// ESRCH is returned if the thread has already been joined, which is not an error
+	if ((0 != status) && (ESRCH != status))
 	{
 		Common::emit_system_error("pthread_join failed");
 	}

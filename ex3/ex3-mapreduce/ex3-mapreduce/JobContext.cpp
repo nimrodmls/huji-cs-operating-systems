@@ -49,8 +49,7 @@ void JobContext::start_job()
 {
 	assert(UNDEFINED_STAGE == get_stage());
 
-	set_stage(MAP_STAGE);
-	set_stage_total(static_cast<uint32_t>(m_inputVec.size()));
+	set_stage(MAP_STAGE, static_cast<uint32_t>(m_inputVec.size()));
 	for (const auto& worker : m_workers)
 	{
 		worker->run();
@@ -93,13 +92,6 @@ stage_t JobContext::get_stage() const
 	return Common::get_stage(m_stageCnt.load());
 }
 
-uint32_t JobContext::get_stage_processed() const
-{
-	// The processed count is stored in the 31 least significant bits of the counter
-	// (after the total count)
-	return Common::get_stage_processed(m_stageCnt.load());
-}
-
 uint32_t JobContext::get_stage_total() const
 {
 	// The total count is stored in the 31 "middle" bits of the counter
@@ -107,32 +99,19 @@ uint32_t JobContext::get_stage_total() const
 	return Common::get_stage_total(m_stageCnt.load());
 }
 
-void JobContext::set_stage(stage_t new_stage)
+void JobContext::set_stage(stage_t new_stage, uint32_t total)
 {
 	// Clear the stage bits
-	m_stageCnt &= ~(0x3ULL << 62);
+	//m_stageCnt &= ~(0x3ULL << 62);
 	// Set the new stage bits
-	m_stageCnt |= (static_cast<uint64_t>(new_stage) << 62);
-}
-
-void JobContext::reset_stage_processed()
-{
-	// Reset the processed count
-	m_stageCnt &= ~(0x7FFFFFFFULL);
+	//m_stageCnt |= (static_cast<uint64_t>(new_stage) << 62);
+	m_stageCnt = (static_cast<uint64_t>(new_stage) << 62) | (static_cast<uint64_t>(total) << 31);
 }
 
 uint32_t JobContext::inc_stage_processed(uint32_t val)
 {
 	// Increment the processed count
 	return (m_stageCnt.fetch_add(val) << 33) >> 33;
-}
-
-void JobContext::set_stage_total(uint32_t total)
-{
-	// Clear the total count bits
-	m_stageCnt &= 0x7FFFFFFFULL | (0x3ULL << 62);
-	// Set the new total count bits
-	m_stageCnt |= (static_cast<uint64_t>(total) << 33);
 }
 
 bool JobContext::assign_shuffle_job()
@@ -143,14 +122,12 @@ bool JobContext::assign_shuffle_job()
 
 void JobContext::worker_handle_current_stage(WorkerContext* worker_ctx)
 {
+	assert(nullptr != worker_ctx);
+
 	JobContext* job_context = worker_ctx->jobContext;
 
 	// Incrementing the processed count, and checking if the stage is complete
 	uint32_t old_val = job_context->inc_stage_processed(1);
-	// Stage is complete - Note that it's either complete if the processed
-	// count is higher than the total count, or if the processed count overflowed 31 bits
-	// (hence the stage total would be overwritten and corrupted)
-	// TODO: Overflow check is incomplete
 	while (old_val < job_context->get_stage_total())
 	{
 		switch (job_context->get_stage())
@@ -187,20 +164,22 @@ void JobContext::worker_handle_current_stage(WorkerContext* worker_ctx)
 
 void JobContext::worker_shuffle_stage(JobContext* job_context)
 {
-	// Resetting the processed count for the shuffle stage -
-	// The total to process remains the same
-	job_context->reset_stage_processed();
+	assert(nullptr != job_context);
 	
 	IntermediateVec backPairs;
 	uint32_t total_size = 0;
-	// Getting all the pairs at the back of each of the worker's intermediates
+	// Getting all the pairs at the back of each of the worker's intermediates, only non-empty
 	for (const auto& worker : job_context->m_workersContext)
 	{
 		IntermediateVec& vec = worker->intermediateVec;
-		total_size += static_cast<uint32_t>(vec.size());
-		backPairs.emplace_back(vec.back());
+		if (!vec.empty())
+		{
+			total_size += static_cast<uint32_t>(vec.size());
+			backPairs.emplace_back(vec.back());
+		}
 	}
-	job_context->set_stage_total(total_size);
+
+	job_context->set_stage(SHUFFLE_STAGE, total_size);
 
 	while (!backPairs.empty())
 	{
@@ -248,7 +227,7 @@ void* JobContext::job_worker_thread(void* context)
 	WorkerContext* worker_ctx = static_cast<WorkerContext*>(context);
 	JobContext* job_context = worker_ctx->jobContext;
 
-	/* MAP STAGE */
+	/*** MAP STAGE ***/
 	worker_handle_current_stage(worker_ctx);
 	// The map stage has been completed, sort the intermediate vector according to the key
 	std::sort(
@@ -260,17 +239,16 @@ void* JobContext::job_worker_thread(void* context)
 	// Waiting on the barrier for all the workers to complete their map stage
 	job_context->get_shuffle_barrier().barrier();
 
+	/*** SHUFFLE STAGE - ONE WORKER ONLY ***/
 	// Once done - Starting the shuffle phase on one thread
 	if (job_context->assign_shuffle_job())
 	{
 		// Shuffle stage is assigned to the current worker
-		job_context->set_stage(SHUFFLE_STAGE);
 		worker_shuffle_stage(job_context);
 
 		// Shuffle is complete, allowing the beginning of the reduce stage
-		job_context->set_stage(REDUCE_STAGE);
-		job_context->reset_stage_processed();
-		job_context->set_stage_total(static_cast<uint32_t>(job_context->m_shuffleQueue.size()));
+		job_context->set_stage(
+			REDUCE_STAGE, static_cast<uint32_t>(job_context->m_shuffleQueue.size()));
 	}
 	else // Or waiting for the shuffle to end on the other threads
 	{
@@ -280,6 +258,7 @@ void* JobContext::job_worker_thread(void* context)
 	// Allowing all the workers to continue to the reduce stage
 	job_context->get_shuffle_semaphore().post();
 
+	/*** REDUCE STAGE ***/
 	worker_handle_current_stage(worker_ctx);
 
 	return nullptr;

@@ -11,14 +11,15 @@
 #include "Semaphore.h"
 
 class JobContext;
+
 class WorkerContext
 {
 public:
-	WorkerContext(
-		JobContext* job_context) :
+	WorkerContext(JobContext* job_context) :
 		jobContext(job_context),
 		intermediateVec()
 	{}
+
 	// Reference to the owning job context
 	JobContext* jobContext;
 	// The worker's intermediate vector
@@ -54,13 +55,10 @@ public:
 
 	// TODO: Make these functions private
 	stage_t get_stage() const;
-	uint32_t get_stage_processed() const;
 	uint32_t get_stage_total() const;
 
-	void set_stage(stage_t new_stage);
-	void reset_stage_processed();
+	void set_stage(stage_t new_stage, uint32_t total);
 	uint32_t inc_stage_processed(uint32_t val);
-	void set_stage_total(uint32_t total);
 
 	InputVec& get_input_vec() { return m_inputVec; }
 	const MapReduceClient& get_client() const { return m_client; }
@@ -76,13 +74,26 @@ private:
 	 * false otherwise */
 	bool assign_shuffle_job();
 
-	/* Entrypoint for a job worker thread
-	 * The worker thread will execute map-sort-reduce operations */
+	/* -- Worker Utility function --
+	 * Worker's map/reduce stage handler */
 	static void worker_handle_current_stage(
 		WorkerContext* worker_ctx);
 
+	/**
+	 * -- Worker Utility function --
+	 * The shuffle stage is executed by one of the worker threads
+	 * The shuffle stage is responsible for grouping the intermediates by key
+	 * Note: This function is NOT thread-safe, as it is only called by one worker */
 	static void worker_shuffle_stage(JobContext* job_context);
 
+	/**
+	 * Entrypoint for a job worker thread
+	 * The worker thread will execute map-sort-reduce operations
+	 * for the job. Multiple worker threads can run concurrently
+	 *
+	 * @param context - The worker context
+	 * @return - Always NULL
+	 */
 	static void* job_worker_thread(void* context);
 
 	InputVec m_inputVec;
