@@ -16,9 +16,9 @@ JobContext::JobContext(
 	m_client(client),
 	m_shuffle_barrier(worker_count),
 	m_shuffle_semaphore(0),
-	m_output_mutex(),
-	m_reduce_mutex(),
-	m_stageCnt(0),
+	m_output_mutex(std::make_shared<Mutex>()),
+	m_reduce_mutex(std::make_shared<Mutex>()),
+	m_stage_status(0),
 	m_shuffleAssign(false),
 	m_workers()
 {
@@ -56,12 +56,15 @@ void JobContext::start_job()
 	}
 }
 
-void JobContext::wait() const
+void JobContext::wait()
 {
 	for (const auto& worker : m_workers)
 	{
 		worker->join();
 	}
+	// Since all the worker threads joined,
+	// we can safely clear the workers vector
+	m_workers.clear();
 }
 
 void JobContext::get_state(JobState* state) const
@@ -69,7 +72,7 @@ void JobContext::get_state(JobState* state) const
 	// First loading the current stage and preserving it,
 	// as it might change while this function runs
 	// (e.g. the stage may change, and we would give out the wrong percentage)
-	const uint64_t current_state = m_stageCnt.load();
+	const uint64_t current_state = m_stage_status.load();
 	state->stage = Common::get_stage(current_state);
 	const uint32_t total_entries = Common::get_stage_total(current_state);
 	state->percentage = 100.0f *
@@ -81,37 +84,36 @@ void JobContext::get_state(JobState* state) const
 
 void JobContext::add_output(K3* key, V3* value)
 {
-	m_output_mutex.lock();
+	AutoMutexLock lock(m_output_mutex);
 	m_outputVec.push_back(std::make_pair(key, value));
-	m_output_mutex.unlock();
 }
 
 stage_t JobContext::get_stage() const
 {
 	// The stage ID is stored in the 2 most significant bits of the counter
-	return Common::get_stage(m_stageCnt.load());
+	return Common::get_stage(m_stage_status.load());
 }
 
 uint32_t JobContext::get_stage_total() const
 {
 	// The total count is stored in the 31 "middle" bits of the counter
 	// (between the stage ID and the processed count)
-	return Common::get_stage_total(m_stageCnt.load());
+	return Common::get_stage_total(m_stage_status.load());
 }
 
 void JobContext::set_stage(stage_t new_stage, uint32_t total)
 {
 	// Clear the stage bits
-	//m_stageCnt &= ~(0x3ULL << 62);
+	//m_stage_status &= ~(0x3ULL << 62);
 	// Set the new stage bits
-	//m_stageCnt |= (static_cast<uint64_t>(new_stage) << 62);
-	m_stageCnt = (static_cast<uint64_t>(new_stage) << 62) | (static_cast<uint64_t>(total) << 31);
+	//m_stage_status |= (static_cast<uint64_t>(new_stage) << 62);
+	m_stage_status = (static_cast<uint64_t>(new_stage) << 62) | (static_cast<uint64_t>(total) << 31);
 }
 
 uint32_t JobContext::inc_stage_processed(uint32_t val)
 {
 	// Increment the processed count
-	return (m_stageCnt.fetch_add(val) << 33) >> 33;
+	return (m_stage_status.fetch_add(val) << 33) >> 33;
 }
 
 bool JobContext::assign_shuffle_job()
@@ -144,10 +146,10 @@ void JobContext::worker_handle_current_stage(WorkerContext* worker_ctx)
 
 		case REDUCE_STAGE:
 			{
-				job_context->m_reduce_mutex.lock();
+				job_context->m_reduce_mutex->lock();
 				const IntermediateVec current_entry = job_context->m_shuffleQueue.back();
 				job_context->m_shuffleQueue.pop_back();
-				job_context->m_reduce_mutex.unlock();
+				job_context->m_reduce_mutex->unlock();
 				job_context->get_client().reduce(&current_entry, worker_ctx);
 			}
 			break;

@@ -20,3 +20,14 @@ void Mutex::unlock()
 		Common::emit_system_error("pthread_mutex_unlock failed");
 	}
 }
+
+AutoMutexLock::AutoMutexLock(MutexPtr& mutex) :
+	m_mutex(mutex)
+{
+	m_mutex->lock();
+}
+
+AutoMutexLock::~AutoMutexLock()
+{
+	m_mutex->unlock();
+}
