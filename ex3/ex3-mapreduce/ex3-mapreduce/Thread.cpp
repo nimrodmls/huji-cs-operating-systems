@@ -10,6 +10,20 @@ Thread::Thread(const ThreadEntrypoint& entrypoint, void* args) :
 	m_entrypoint(entrypoint)
 {}
 
+Thread::~Thread()
+{
+	if (!m_joined)
+	{
+		// If the thread was not joined, we need to cancel it
+		const int status = pthread_cancel(m_thread);
+		if (0 != status)
+		{
+			// NOT throwing an exception, as this is a dtor!!
+			std::cout << "system error: pthread_cancel failed" << std::endl;
+		}
+	}
+}
+
 void Thread::run()
 {
 	const int status = pthread_create(&m_thread, nullptr, m_entrypoint, m_ep_args);
@@ -34,3 +48,5 @@ void Thread::join()
 		m_joined = true;
 	}
 }
+
+

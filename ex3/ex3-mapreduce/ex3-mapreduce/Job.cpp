@@ -226,44 +226,51 @@ void Job::worker_shuffle_stage(Job* job_context)
 
 void* Job::job_worker_thread(void* context)
 {
-	assert(nullptr != context);
-
-	WorkerContext* worker_ctx = static_cast<WorkerContext*>(context);
-	Job* job_context = worker_ctx->jobContext;
-
-	/*** MAP STAGE ***/
-	worker_handle_current_stage(worker_ctx);
-	// The map stage has been completed, sort the intermediate vector according to the key
-	std::sort(
-		worker_ctx->intermediateVec.begin(), 
-		worker_ctx->intermediateVec.end(), 
-		Common::key_less_than
-	);
-
-	// Waiting on the barrier for all the workers to complete their map stage
-	job_context->m_shuffle_barrier.barrier();
-
-	/*** SHUFFLE STAGE - ONE WORKER ONLY ***/
-	// Once done - Starting the shuffle phase on one thread
-	if (job_context->assign_shuffle_job())
+	try
 	{
-		// Shuffle stage is assigned to the current worker
-		worker_shuffle_stage(job_context);
+		assert(nullptr != context);
 
-		// Shuffle is complete, allowing the beginning of the reduce stage
-		job_context->set_stage(
-			REDUCE_STAGE, static_cast<uint32_t>(job_context->m_shuffle_queue.size()));
+		WorkerContext* worker_ctx = static_cast<WorkerContext*>(context);
+		Job* job_context = worker_ctx->jobContext;
+
+		/*** MAP STAGE ***/
+		worker_handle_current_stage(worker_ctx);
+		// The map stage has been completed, sort the intermediate vector according to the key
+		std::sort(
+			worker_ctx->intermediateVec.begin(),
+			worker_ctx->intermediateVec.end(),
+			Common::key_less_than
+		);
+
+		// Waiting on the barrier for all the workers to complete their map stage
+		job_context->m_shuffle_barrier.barrier();
+
+		/*** SHUFFLE STAGE - ONE WORKER ONLY ***/
+		// Once done - Starting the shuffle phase on one thread
+		if (job_context->assign_shuffle_job())
+		{
+			// Shuffle stage is assigned to the current worker
+			worker_shuffle_stage(job_context);
+
+			// Shuffle is complete, allowing the beginning of the reduce stage
+			job_context->set_stage(
+				REDUCE_STAGE, static_cast<uint32_t>(job_context->m_shuffle_queue.size()));
+		}
+		else // Or waiting for the shuffle to end on the other threads
+		{
+			job_context->m_shuffle_semaphore.wait();
+		}
+
+		// Allowing all the workers to continue to the reduce stage
+		job_context->m_shuffle_semaphore.post();
+
+		/*** REDUCE STAGE ***/
+		worker_handle_current_stage(worker_ctx);
 	}
-	else // Or waiting for the shuffle to end on the other threads
+	catch (...)
 	{
-		job_context->m_shuffle_semaphore.wait();
+		// Catching all exceptions, thread will terminate afterwards
 	}
-
-	// Allowing all the workers to continue to the reduce stage
-	job_context->m_shuffle_semaphore.post();
-
-	/*** REDUCE STAGE ***/
-	worker_handle_current_stage(worker_ctx);
 
 	return nullptr;
 }

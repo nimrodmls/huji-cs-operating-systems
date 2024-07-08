@@ -15,7 +15,7 @@ public:
 	Thread(const ThreadEntrypoint& entrypoint, void* args);
 	Thread(const Thread&) = delete;
 	Thread& operator=(const Thread&) = delete;
-	~Thread() = default;
+	~Thread(); // Dtor is canceling the thread - This is dangerous!
 
 	// Starting the thread with the given arguments
 	void run();

@@ -8,10 +8,13 @@
 
 namespace Common
 {
-	inline void emit_system_error(std::string message)
+	class system_error : public std::exception
+	{};
+
+	inline void emit_system_error(const std::string& message)
 	{
 		std::cout << "system error: " << message << std::endl;
-		exit(1);
+		throw system_error();
 	}
 
 	inline bool key_less_than(const IntermediatePair& p1, const IntermediatePair& p2)

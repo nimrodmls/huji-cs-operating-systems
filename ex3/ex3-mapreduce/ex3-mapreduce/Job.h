@@ -52,7 +52,8 @@ public:
 	Job(const Job&) = delete;
 	Job& operator=(const Job&) = delete;
 	// The dtor is not waiting for the worker threads to finish
-	// it is in the responsibility of the caller to wait for the job to finish
+	// it is in the responsibility of the caller to wait for the job to finish,
+	// otherwise the threads will be forcefully terminated
 	~Job() = default;
 
 	// Starting the job, by starting all the worker threads
