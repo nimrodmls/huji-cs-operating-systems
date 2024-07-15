@@ -31,27 +31,6 @@ static void zero_frame(uint64_t frame)
 }
 
 /**
- * \brief Locates a free frame in the RAM and returns its index.
- *		  If no free frames are found, a frame will be evicted,
- *		  and the corresponding index will be returned.
- * \return Index to the newly allocated frame on the RAM.
- */
-static int allocate_physical_frame()
-{
-	uint64_t next_node = pa_frame_read_word(
-		ROOT_FRAME, Utils::va_get_page_index_depth(va, frame));
-	if (ROOT_FRAME == next_node) // The page is not mapped
-	{
-
-	}
-	else // The page is mapped, go further one step down the tree
-	{
-		traverse_page_table(frame + 1);
-	}
-	return 0;
-}
-
-/**
  * \brief Traversing the page table from the given frame node.
  *		  This is essentially an implementation of DFS.
  * \param va 
@@ -137,7 +116,14 @@ static word_t traverse_page_table(
 	return max_frame;
 }
 
-static uint64_t allocate_frame(uint64_t va)
+/**
+ * \brief Allocates a new frame. If the RAM is full, a page will be evicted,
+ *        the decision of which page is evicted is based on the page that will
+ *		  be essentially loaded into the physical memory.
+ * \param target_page 
+ * \return 
+ */
+static word_t allocate_frame(word_t target_page)
 {
 	bool empty_table = false;
 	uint64_t max_dist = 0;
@@ -149,8 +135,8 @@ static uint64_t allocate_frame(uint64_t va)
 	// use max_dist_frame to evict a page and allocate the new page in its place.
 	// max_dist will not be used, as max_dist_frame has all the information required.
 	// Note that the traversal starts from the root of the tree.
-	const uint64_t target_frame = traverse_page_table(
-		ROOT_FRAME, 0, &empty_table, Utils::va_get_page(va), 
+	const word_t target_frame = traverse_page_table(
+		ROOT_FRAME, 0, &empty_table, target_page, 
 		&max_dist, &max_dist_frame, &max_dist_page);
 
 	// CASE 1: An empty page table, we will just reuse it (no overriding required)
@@ -173,42 +159,47 @@ static uint64_t allocate_frame(uint64_t va)
 	return max_dist_frame;
 }
 
+// TODO: Change va to page
 /**
- * \brief Locates the frame hosting a page referred by the given virtual address.
- *		  If the page is not found, a free frame will be found and allocated.
- *		  If no more pages are available, a page will be evicted, and reallocated
- *		  for the new page.
- * \return When the frame returned > NUM_FRAMES, then it means
- *		   that all pages are occupied.
+ * \brief Loads a page from the pagefile to the RAM.
+ *		  If the page is already in the RAM, it will not be loaded again.
+ * \param va Virtual address of the page to load.
+ * \return The frame index to the page in the RAM.
  */
-static bool locate_frame_from_va(uint64_t* free_frame)
+static uint64_t load_page(uint64_t va)
 {
-	// TODO: Implement
-	return false;
-}
+	bool is_new_page = false;
+	uint64_t ancestor_node = ROOT_FRAME;
 
-static uint64_t load_page_from_va(uint64_t va)
-{
-	// Traverse the tree to find the page
-
-
-	
-
-	// If the page is , we find a free frame to host the page.
-	uint64_t free_frame = 0;
-	bool is_existing = locate_frame_from_va(&free_frame);
-	if (!is_existing && (NUM_FRAMES < free_frame))
+	// Iterating on the page table tree according to the given virtual address
+	for (uint64_t depth = 0; depth < TABLES_DEPTH; ++depth)
 	{
-		// TODO: PLACEHOLDER CODE.
-		return swap_page(va);
+		const uint64_t page_index = Utils::va_get_page_table_index(va, depth);
+		const word_t target_frame = pa_frame_read_word(ancestor_node, page_index);
+
+		if (ROOT_FRAME == target_frame) // If the page table is not mapped, mapping it
+		{
+			// Note that we write junk data to the page table at the entry we wish
+			// to allocate, so this page table will not be a candidate for allocation
+			// (as specified in the first case for allocation).
+			pa_frame_write_word(ancestor_node, page_index, static_cast<word_t>(-1));
+			const word_t new_frame = allocate_frame(static_cast<word_t>(Utils::va_get_page(va)));
+			pa_frame_write_word(ancestor_node, page_index, new_frame);
+
+			// Marking the page as newly allocated, this will be used to determine
+			// whether the page should be restored from the pagefile.
+			is_new_page = true;
+		}
+
+		ancestor_node = target_frame;
 	}
 
-	if (is_existing)
+	if (is_new_page)
 	{
-		return free_frame;
+		PMrestore(ancestor_node, static_cast<word_t>(Utils::va_get_page(va)));
 	}
 
-	return 0;
+	return ancestor_node;
 }
 
 void VMinitialize()
@@ -220,7 +211,7 @@ int VMread(uint64_t virtualAddress, word_t* value)
 {
 	// This stores the address to the physical frame that contains the data
 	// pointed by the given virtual address.
-	const uint64_t pa_dest_frame = load_page_from_va(virtualAddress);
+	const uint64_t pa_dest_frame = load_page(virtualAddress);
 
 	*value = pa_frame_read_word(pa_dest_frame, Utils::va_get_offset(virtualAddress));
 
@@ -229,7 +220,7 @@ int VMread(uint64_t virtualAddress, word_t* value)
 
 int VMwrite(uint64_t virtualAddress, word_t value)
 {
-	const uint64_t pa_dest_frame = load_page_from_va(virtualAddress);
+	const uint64_t pa_dest_frame = load_page(virtualAddress);
 
 	pa_frame_write_word(pa_dest_frame, Utils::va_get_offset(virtualAddress), value);
 

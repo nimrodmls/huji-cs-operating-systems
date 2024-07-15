@@ -19,7 +19,7 @@ namespace Utils
 	 *		 extract the i'th index from the left. So for depth=0 the function
 	 *		 returns 0, and for depth=1 the function returns 1, and so on.
 	 */
-	constexpr uint64_t va_get_page_index_depth(uint64_t va, uint64_t depth)
+	constexpr uint64_t va_get_page_table_index(uint64_t va, uint64_t depth)
 	{
 		// The first part is for calculating the page index up until the specified
 		// depth. And the last logical and is for extracting the index at the
@@ -36,7 +36,7 @@ namespace Utils
 	constexpr uint64_t va_get_offset(uint64_t va)
 	{
 		//return va & ((1ULL << OFFSET_WIDTH) - 1);
-		return va_get_page_index_depth(va, TABLES_DEPTH);
+		return va_get_page_table_index(va, TABLES_DEPTH);
 	}
 
 	constexpr uint64_t va_get_page(uint64_t va)
@@ -47,7 +47,7 @@ namespace Utils
 	constexpr uint64_t get_cyclical_distance(
 		uint64_t mapped_page, uint64_t target_page)
 	{
-		const uint64_t dist = std::abs(static_cast<int64_t>(target_page - mapped_page));
+		uint64_t dist = std::abs(static_cast<int64_t>(target_page - mapped_page));
 		return std::min(NUM_PAGES - dist, dist);
 	}
 
