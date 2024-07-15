@@ -7,6 +7,7 @@ add_executable (ex4-vmem
 				"PhysicalMemory.cpp"
 				"VirtualMemory.cpp"
 				"SimpleTest.cpp"
+				"Utils.cpp"
 )
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)
