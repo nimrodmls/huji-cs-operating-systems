@@ -1,4 +1,4 @@
-# CMakeList.txt : CMake project for ex3-mapreduce, include source and define
+﻿# CMakeList.txt : CMake project for ex3-mapreduce, include source and define
 # project specific logic here.
 #
 
@@ -6,14 +6,15 @@ find_package(Threads REQUIRED)
 
 # Add source to this project's executable.
 add_executable (ex3-mapreduce 
-				"ex3-mapreduce.cpp" 
+				#"ex3-mapreduce.cpp" 
 				"MapReduceFramework.cpp" 
-				"MapReduceClient.cpp" 
 				"Thread.cpp"
-				"JobContext.cpp"
+				"Job.cpp"
 				"Barrier.cpp"
-				"Semaphore.cpp" 
+				"CSemaphore.cpp" 
 				"Mutex.cpp"
+				"SampleClient.cpp")
+				#"test2.cpp")
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)
   set_property(TARGET ex3-mapreduce PROPERTY CXX_STANDARD 11)
