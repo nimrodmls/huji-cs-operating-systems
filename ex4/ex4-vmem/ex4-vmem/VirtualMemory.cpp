@@ -22,12 +22,19 @@ static void pa_frame_write_word(uint64_t frame, uint64_t offset, word_t value)
 	PMwrite((frame * PAGE_SIZE) + offset, value);
 }
 
-static void zero_frame(uint64_t frame)
+static void pa_zero_frame(uint64_t frame)
 {
 	for (uint64_t offset = 0; offset < PAGE_SIZE; ++offset)
 	{
 		pa_frame_write_word(frame, offset, 0);
 	}
+}
+
+uint64_t get_cyclical_distance(
+	uint64_t mapped_page, uint64_t target_page)
+{
+	const uint64_t dist = std::abs(static_cast<int64_t>(target_page - mapped_page));
+	return std::min(static_cast<uint64_t>(NUM_PAGES - dist), dist);
 }
 
 /**
@@ -40,6 +47,7 @@ static word_t traverse_page_table(
 	word_t frame, 
 	uint64_t depth, 
 	bool* empty_table,
+	word_t host_page_table_frame,
 	uint64_t target_page,
 	uint64_t* max_dist, 
 	word_t* max_dist_frame,
@@ -56,7 +64,7 @@ static word_t traverse_page_table(
 			// cyclical distance from the page in va to it
 			if (ROOT_FRAME != mapped_page)
 			{
-				const uint64_t distance = Utils::get_cyclical_distance(
+				const uint64_t distance = get_cyclical_distance(
 				mapped_page, target_page);
 				if (distance > *max_dist)
 				{
@@ -66,6 +74,13 @@ static word_t traverse_page_table(
 				}
 			}
 		}
+		return frame;
+	}
+
+	// Stopping criteria - The frame which is going to host the newly found
+	// frame is the current frame in the traversal. We cannot overwrite it.
+	if (host_page_table_frame == frame)
+	{
 		return frame;
 	}
 
@@ -82,7 +97,8 @@ static word_t traverse_page_table(
 		if (ROOT_FRAME != target_frame) 
 		{
 			max_frame = traverse_page_table(
-				target_frame, depth + 1, empty_table, target_page, max_dist, max_dist_frame, max_dist_page);
+				target_frame, depth + 1, empty_table, host_page_table_frame, 
+				target_page, max_dist, max_dist_frame, max_dist_page);
 
 			// If the empty table indicator is set, it means one of the recursive
 			// calls have found an empty page table. That page table is the one
@@ -123,7 +139,7 @@ static word_t traverse_page_table(
  * \param target_page 
  * \return 
  */
-static word_t allocate_frame(word_t target_page)
+static word_t allocate_frame(word_t target_page, word_t host_page_table)
 {
 	bool empty_table = false;
 	uint64_t max_dist = 0;
@@ -136,7 +152,7 @@ static word_t allocate_frame(word_t target_page)
 	// max_dist will not be used, as max_dist_frame has all the information required.
 	// Note that the traversal starts from the root of the tree.
 	const word_t target_frame = traverse_page_table(
-		ROOT_FRAME, 0, &empty_table, target_page, 
+		ROOT_FRAME, 0, &empty_table, host_page_table, target_page,
 		&max_dist, &max_dist_frame, &max_dist_page);
 
 	// CASE 1: An empty page table, we will just reuse it (no overriding required)
@@ -148,8 +164,7 @@ static word_t allocate_frame(word_t target_page)
 	// CASE 2: Locate unused frames in the RAM
 	if (target_frame + 1 < NUM_FRAMES)
 	{
-		// Allocate the new page in the target frame
-		zero_frame(target_frame + 1);
+		pa_zero_frame(target_frame + 1);
 		return target_frame + 1;
 	}
 
@@ -169,22 +184,20 @@ static word_t allocate_frame(word_t target_page)
 static uint64_t load_page(uint64_t va)
 {
 	bool is_new_page = false;
-	uint64_t ancestor_node = ROOT_FRAME;
+	word_t ancestor_node = ROOT_FRAME;
 
 	// Iterating on the page table tree according to the given virtual address
 	for (uint64_t depth = 0; depth < TABLES_DEPTH; ++depth)
 	{
 		const uint64_t page_index = Utils::va_get_page_table_index(va, depth);
-		const word_t target_frame = pa_frame_read_word(ancestor_node, page_index);
+		word_t target_frame = pa_frame_read_word(ancestor_node, page_index);
 
 		if (ROOT_FRAME == target_frame) // If the page table is not mapped, mapping it
 		{
-			// Note that we write junk data to the page table at the entry we wish
-			// to allocate, so this page table will not be a candidate for allocation
-			// (as specified in the first case for allocation).
-			pa_frame_write_word(ancestor_node, page_index, static_cast<word_t>(-1));
-			const word_t new_frame = allocate_frame(static_cast<word_t>(Utils::va_get_page(va)));
-			pa_frame_write_word(ancestor_node, page_index, new_frame);
+			target_frame = allocate_frame(
+				static_cast<word_t>(Utils::va_get_page(va)),
+				ancestor_node);
+			pa_frame_write_word(ancestor_node, page_index, target_frame);
 
 			// Marking the page as newly allocated, this will be used to determine
 			// whether the page should be restored from the pagefile.
@@ -204,7 +217,7 @@ static uint64_t load_page(uint64_t va)
 
 void VMinitialize()
 {
-	zero_frame(ROOT_FRAME);
+	pa_zero_frame(ROOT_FRAME);
 }
 
 int VMread(uint64_t virtualAddress, word_t* value)

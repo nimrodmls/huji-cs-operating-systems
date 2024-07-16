@@ -44,13 +44,6 @@ namespace Utils
 		return va >> OFFSET_WIDTH;
 	}
 
-	constexpr uint64_t get_cyclical_distance(
-		uint64_t mapped_page, uint64_t target_page)
-	{
-		uint64_t dist = std::abs(static_cast<int64_t>(target_page - mapped_page));
-		return std::min(NUM_PAGES - dist, dist);
-	}
-
 }
 
 #endif // UTILS_H
