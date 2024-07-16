@@ -55,43 +55,7 @@ static word_t traverse_page_table(
 	word_t* max_dist_page,
 	word_t* max_dist_page_table)
 {
-	// Stopping criteria - we reached the page table pointing
-	// to the leaves of the page table tree (the actual pages).
-	if (TABLES_DEPTH == depth)
-	{
-		// Iterating on all leaves of the page table
-		for (word_t word_offset = 0; word_offset < PAGE_SIZE; ++word_offset)
-		{
-			const word_t mapped_page_frame = pa_frame_read_word(frame, word_offset);
-			// If the target frame is mapped to RAM, we measure the
-			// cyclical distance from the page in va to it
-			if (ROOT_FRAME != mapped_page_frame)
-			{
-				current_va = (current_va << OFFSET_WIDTH) + word_offset;
-				const uint64_t distance = get_cyclical_distance(
-												current_va, target_page);
-				if (distance > *max_dist)
-				{
-					*max_dist = distance;
-					*max_dist_frame = mapped_page_frame;
-					*max_dist_page = current_va;
-					*max_dist_page_table = frame;
-				}
-			}
-		}
-		return frame;
-	}
-
-	// Stopping criteria - The frame which is going to host the newly found
-	// frame is the current frame in the traversal. We cannot overwrite it.
-	// if (host_page_table_frame == frame)
-	// {
-	// 	return frame;
-	// }
-
-	// Otherwise, continue traversal - as below...
-
-	word_t max_frame = 0;
+	word_t max_frame = 0; // Stores the maximum frame found in the current page table
 	uint64_t nonzero_targets = 0;
 
 	for (word_t word_offset = 0; word_offset < PAGE_SIZE; ++word_offset)
@@ -104,19 +68,41 @@ static word_t traverse_page_table(
 			// TODO: Document this
 			current_va = (current_va << OFFSET_WIDTH) + word_offset;
 
-			target_frame = traverse_page_table(
-				target_frame, current_va, depth + 1, empty_table, host_page_table_frame, 
-				target_page, max_dist, max_dist_frame, max_dist_page, max_dist_page_table);
-
-			// If the empty table indicator is set, it means one of the recursive
-			// calls have found an empty page table. That page table is the one
-			// returned by the recursive calls.
-			if (*empty_table)
+			// The other frame is a storing a page
+			if (TABLES_DEPTH == depth + 1)
 			{
-				return max_frame;
+				const uint64_t distance = get_cyclical_distance(
+					current_va, target_page);
+				if (distance > *max_dist)
+				{
+					*max_dist = distance;
+					*max_dist_frame = target_frame;
+					*max_dist_page = current_va;
+					*max_dist_page_table = frame;
+				}
+			}
+			else // The other frame is storing a page table
+			{
+				word_t candidate_frame = traverse_page_table(
+				   target_frame, current_va, depth + 1, empty_table, host_page_table_frame, 
+				   target_page, max_dist, max_dist_frame, max_dist_page, max_dist_page_table);
+
+				// If the empty table indicator is set, it means one of the recursive
+				// calls have found an empty page table. That page table is the one
+				// returned by the recursive calls.
+				if (*empty_table)
+				{
+					if (candidate_frame == target_frame)
+					{
+						pa_frame_write_word(frame, word_offset, ROOT_FRAME);
+					}
+					return candidate_frame;
+				}
+
+				target_frame = candidate_frame;
 			}
 
-			// Otherwise, the maximum allocated frame is updated
+			// Updating the max frame spotted in the page tables
 			if (max_frame < target_frame)
 			{
 				max_frame = target_frame;
@@ -126,11 +112,14 @@ static word_t traverse_page_table(
 			// used later to determine whether the current frame is an empty page table.
 			nonzero_targets++;
 		}
+
 		// target_frame is not pointing to any frame, continue to next word
 	}
 
 	// If all the entries in the current frame (the current part of the page table)
-	// are empty, it means that this frame can be used for a new page.
+	// are empty, it means that this frame can be used for a new page. But only if
+	// this frame is not the host page table frame (so new allocations won't be using
+	// their own page table as the target frame).
 	if ((0 == nonzero_targets) && 
 		(host_page_table_frame != frame))
 	{
@@ -138,6 +127,8 @@ static word_t traverse_page_table(
 		return frame;
 	}
 
+	// Taking either the maximum frame in the page tables referred to from the current
+	// page, or taking the frame itself if it's the maximum frame.
 	return std::max(max_frame, frame);
 }
 
@@ -182,7 +173,11 @@ static word_t allocate_frame(word_t target_page, word_t host_page_table)
 	PMevict(max_dist_frame, max_dist_page);
 	// Resetting the page table entry pointing to the evicted page
 	pa_frame_write_word(
-		max_dist_page_table, Utils::page_get_index_depth(target_page, TABLES_DEPTH), 0);
+		max_dist_page_table, 
+		//Utils::page_get_index_depth(target_page, TABLES_DEPTH), 
+		Utils::page_get_index_depth(max_dist_page, TABLES_DEPTH - 1),
+		ROOT_FRAME);
+	pa_zero_frame(max_dist_frame);
 
 	return max_dist_frame;
 }
