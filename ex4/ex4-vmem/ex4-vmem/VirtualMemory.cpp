@@ -45,7 +45,7 @@ uint64_t get_cyclical_distance(
  */
 static word_t traverse_page_table(
 	word_t frame,
-	word_t current_va,
+	word_t branch_route,
 	uint64_t depth, 
 	bool* empty_table,
 	word_t host_page_table_frame,
@@ -66,25 +66,25 @@ static word_t traverse_page_table(
 		if (ROOT_FRAME != target_frame) 
 		{
 			// TODO: Document this
-			word_t cur_va = (current_va << OFFSET_WIDTH) + word_offset;
+			const word_t current_branch = (branch_route << OFFSET_WIDTH) + word_offset;
 
 			// The other frame is a storing a page
 			if (TABLES_DEPTH == depth + 1)
 			{
 				const uint64_t distance = get_cyclical_distance(
-					cur_va, target_page);
+					current_branch, target_page);
 				if (distance > *max_dist)
 				{
 					*max_dist = distance;
 					*max_dist_frame = target_frame;
-					*max_dist_page = cur_va;
+					*max_dist_page = current_branch;
 					*max_dist_page_table = frame;
 				}
 			}
 			else // The other frame is storing a page table
 			{
 				word_t candidate_frame = traverse_page_table(
-				   target_frame, cur_va, depth + 1, empty_table, host_page_table_frame, 
+				   target_frame, current_branch, depth + 1, empty_table, host_page_table_frame, 
 				   target_page, max_dist, max_dist_frame, max_dist_page, max_dist_page_table);
 
 				// If the empty table indicator is set, it means one of the recursive
