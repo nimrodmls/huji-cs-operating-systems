@@ -44,33 +44,38 @@ uint64_t get_cyclical_distance(
  * \param depth 
  */
 static word_t traverse_page_table(
-	word_t frame, 
+	word_t frame,
+	word_t current_va,
 	uint64_t depth, 
 	bool* empty_table,
 	word_t host_page_table_frame,
 	uint64_t target_page,
 	uint64_t* max_dist, 
 	word_t* max_dist_frame,
-	word_t* max_dist_page)
+	word_t* max_dist_page,
+	word_t* max_dist_page_table)
 {
-	// Stopping criteria - we reached the leaves of the page table tree
+	// Stopping criteria - we reached the page table pointing
+	// to the leaves of the page table tree (the actual pages).
 	if (TABLES_DEPTH == depth)
 	{
 		// Iterating on all leaves of the page table
-		for (uint64_t word_offset = 0; word_offset < PAGE_SIZE; ++word_offset)
+		for (word_t word_offset = 0; word_offset < PAGE_SIZE; ++word_offset)
 		{
-			const word_t mapped_page = pa_frame_read_word(frame, word_offset);
+			const word_t mapped_page_frame = pa_frame_read_word(frame, word_offset);
 			// If the target frame is mapped to RAM, we measure the
 			// cyclical distance from the page in va to it
-			if (ROOT_FRAME != mapped_page)
+			if (ROOT_FRAME != mapped_page_frame)
 			{
+				current_va = (current_va << OFFSET_WIDTH) + word_offset;
 				const uint64_t distance = get_cyclical_distance(
-				mapped_page, target_page);
+												current_va, target_page);
 				if (distance > *max_dist)
 				{
 					*max_dist = distance;
-					*max_dist_frame = frame;
-					*max_dist_page = mapped_page;
+					*max_dist_frame = mapped_page_frame;
+					*max_dist_page = current_va;
+					*max_dist_page_table = frame;
 				}
 			}
 		}
@@ -79,26 +84,29 @@ static word_t traverse_page_table(
 
 	// Stopping criteria - The frame which is going to host the newly found
 	// frame is the current frame in the traversal. We cannot overwrite it.
-	if (host_page_table_frame == frame)
-	{
-		return frame;
-	}
+	// if (host_page_table_frame == frame)
+	// {
+	// 	return frame;
+	// }
 
 	// Otherwise, continue traversal - as below...
 
 	word_t max_frame = 0;
 	uint64_t nonzero_targets = 0;
 
-	for (uint64_t word_offset = 0; word_offset < PAGE_SIZE; ++word_offset)
+	for (word_t word_offset = 0; word_offset < PAGE_SIZE; ++word_offset)
 	{
 		// Reading the word from the page table
-		const word_t target_frame = pa_frame_read_word(frame, word_offset);
+		word_t target_frame = pa_frame_read_word(frame, word_offset);
 		// target_frame is pointing to another frame, we continue down the tree
 		if (ROOT_FRAME != target_frame) 
 		{
-			max_frame = traverse_page_table(
-				target_frame, depth + 1, empty_table, host_page_table_frame, 
-				target_page, max_dist, max_dist_frame, max_dist_page);
+			// TODO: Document this
+			current_va = (current_va << OFFSET_WIDTH) + word_offset;
+
+			target_frame = traverse_page_table(
+				target_frame, current_va, depth + 1, empty_table, host_page_table_frame, 
+				target_page, max_dist, max_dist_frame, max_dist_page, max_dist_page_table);
 
 			// If the empty table indicator is set, it means one of the recursive
 			// calls have found an empty page table. That page table is the one
@@ -123,13 +131,14 @@ static word_t traverse_page_table(
 
 	// If all the entries in the current frame (the current part of the page table)
 	// are empty, it means that this frame can be used for a new page.
-	if (0 == nonzero_targets)
+	if ((0 == nonzero_targets) && 
+		(host_page_table_frame != frame))
 	{
 		*empty_table = true;
 		return frame;
 	}
 
-	return max_frame;
+	return std::max(max_frame, frame);
 }
 
 /**
@@ -145,6 +154,7 @@ static word_t allocate_frame(word_t target_page, word_t host_page_table)
 	uint64_t max_dist = 0;
 	word_t max_dist_frame = 0;
 	word_t max_dist_page = 0;
+	word_t max_dist_page_table = 0;
 
 	// This call will retrieve the target frame for the new page to be allocated.
 	// If the target frame is beyond the capacity of the RAM, the function will
@@ -152,8 +162,8 @@ static word_t allocate_frame(word_t target_page, word_t host_page_table)
 	// max_dist will not be used, as max_dist_frame has all the information required.
 	// Note that the traversal starts from the root of the tree.
 	const word_t target_frame = traverse_page_table(
-		ROOT_FRAME, 0, &empty_table, host_page_table, target_page,
-		&max_dist, &max_dist_frame, &max_dist_page);
+		ROOT_FRAME, 0, 0, &empty_table, host_page_table, target_page,
+		&max_dist, &max_dist_frame, &max_dist_page, &max_dist_page_table);
 
 	// CASE 1: An empty page table, we will just reuse it (no overriding required)
 	if (empty_table)
@@ -170,6 +180,9 @@ static word_t allocate_frame(word_t target_page, word_t host_page_table)
 
 	// CASE 3: RAM is full, evicting a page is needed
 	PMevict(max_dist_frame, max_dist_page);
+	// Resetting the page table entry pointing to the evicted page
+	pa_frame_write_word(
+		max_dist_page_table, Utils::page_get_index_depth(target_page, TABLES_DEPTH), 0);
 
 	return max_dist_frame;
 }

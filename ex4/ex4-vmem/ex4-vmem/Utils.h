@@ -9,6 +9,16 @@
 
 namespace Utils
 {
+	constexpr uint64_t va_get_page(uint64_t va)
+	{
+		return va >> OFFSET_WIDTH;
+	}
+
+	constexpr uint64_t page_get_index_depth(uint64_t page, uint64_t depth)
+	{
+		return (page >> (PAGE_INDEX_WIDTH - (OFFSET_WIDTH * (depth + 1)))) & ((1ULL << OFFSET_WIDTH) - 1);
+	}
+
 	/**
 	 * \brief Returns the index to the page table in the given virtual address
 	 *		  at the specified depth.
@@ -24,8 +34,9 @@ namespace Utils
 		// The first part is for calculating the page index up until the specified
 		// depth. And the last logical and is for extracting the index at the
 		// the needed depth (as it's guaranteed to be the LSB).
-		return (va >> (OFFSET_WIDTH + PAGE_INDEX_WIDTH - (OFFSET_WIDTH * (depth + 1)))) & 
-			   ((1ULL << OFFSET_WIDTH) - 1);
+		// return (va >> (OFFSET_WIDTH + PAGE_INDEX_WIDTH - (OFFSET_WIDTH * (depth + 1)))) & 
+		// 	   ((1ULL << OFFSET_WIDTH) - 1);
+		return page_get_index_depth(va_get_page(va), depth);
 	}
 
 	/**
@@ -35,13 +46,7 @@ namespace Utils
 	 */
 	constexpr uint64_t va_get_offset(uint64_t va)
 	{
-		//return va & ((1ULL << OFFSET_WIDTH) - 1);
-		return va_get_page_table_index(va, TABLES_DEPTH);
-	}
-
-	constexpr uint64_t va_get_page(uint64_t va)
-	{
-		return va >> OFFSET_WIDTH;
+		return va & ((1ULL << OFFSET_WIDTH) - 1);
 	}
 
 }
