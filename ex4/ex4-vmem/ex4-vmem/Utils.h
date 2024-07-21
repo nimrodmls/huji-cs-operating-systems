@@ -1,19 +1,29 @@
 #ifndef UTILS_H
 #define UTILS_H
 
-#include <algorithm>
-
 #include "MemoryConstants.h"
 
 #define PAGE_INDEX_WIDTH (VIRTUAL_ADDRESS_WIDTH - OFFSET_WIDTH)
 
 namespace Utils
 {
+	/**
+	 * \brief Getting the page index encoded into a virtual address
+	 * \param va The virutal address
+	 * \return The page index
+	 */
 	constexpr uint64_t va_get_page(uint64_t va)
 	{
 		return va >> OFFSET_WIDTH;
 	}
 
+	/**
+	 * \brief Retreives the page table index in the tree at the
+	 *		  specified depth, for a certain page
+	 * \param page The page to extract the index from
+	 * \param depth The depth at which to extract the index
+	 * \return The index at the specified depth
+	 */
 	constexpr uint64_t page_get_index_depth(uint64_t page, uint64_t depth)
 	{
 		return (page >> (PAGE_INDEX_WIDTH - (OFFSET_WIDTH * (depth + 1)))) & ((1ULL << OFFSET_WIDTH) - 1);
@@ -34,8 +44,6 @@ namespace Utils
 		// The first part is for calculating the page index up until the specified
 		// depth. And the last logical and is for extracting the index at the
 		// the needed depth (as it's guaranteed to be the LSB).
-		// return (va >> (OFFSET_WIDTH + PAGE_INDEX_WIDTH - (OFFSET_WIDTH * (depth + 1)))) & 
-		// 	   ((1ULL << OFFSET_WIDTH) - 1);
 		return page_get_index_depth(va_get_page(va), depth);
 	}
 
