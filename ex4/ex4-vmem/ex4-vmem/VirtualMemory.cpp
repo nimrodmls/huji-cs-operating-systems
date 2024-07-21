@@ -231,7 +231,7 @@ static word_t traverse_page_table(
  * \param host_page_table The page table that will be hosting the target page
  * \return The frame index of the allocated frame.
  */
-static word_t allocate_frame(word_t target_page, word_t host_page_table)
+static word_t allocate_frame(uint64_t target_page, word_t host_page_table)
 {
 	bool empty_table = false;
 	uint64_t max_dist = 0;
@@ -279,7 +279,7 @@ static word_t allocate_frame(word_t target_page, word_t host_page_table)
  * \param page The page to load to the physical memory
  * \return The frame index to the page in the RAM.
  */
-static uint64_t load_page(word_t page)
+static uint64_t load_page(uint64_t page)
 {
 	bool is_new_page = false;
 	word_t ancestor_node = ROOT_FRAME;
@@ -321,7 +321,7 @@ void VMinitialize()
 // See VirtualMemory.h for documentation
 int VMread(uint64_t virtualAddress, word_t* value)
 {
-	if (VIRTUAL_MEMORY_SIZE <= virtualAddress)
+	if ((VIRTUAL_MEMORY_SIZE <= virtualAddress) || (nullptr == value))
 	{
 		return VMStatus::VM_FAILURE;
 	}
@@ -344,8 +344,7 @@ int VMwrite(uint64_t virtualAddress, word_t value)
 		return VMStatus::VM_FAILURE;
 	}
 
-	const uint64_t pa_dest_frame = load_page(
-		static_cast<word_t>(Utils::va_get_page(virtualAddress)));
+	const uint64_t pa_dest_frame = load_page(Utils::va_get_page(virtualAddress));
 
 	pa_frame_write_word(pa_dest_frame, Utils::va_get_offset(virtualAddress), value);
 
