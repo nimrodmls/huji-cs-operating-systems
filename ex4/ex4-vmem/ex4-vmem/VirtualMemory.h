@@ -2,13 +2,6 @@
 
 #include "MemoryConstants.h"
 
-// Return statuses
-typedef enum
-{
-	VM_FAILURE = 0,
-	VM_SUCCESS = 1
-} VMStatus;
-
 /*
  * Initialize the virtual memory
  */

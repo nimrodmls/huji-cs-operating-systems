@@ -1,4 +1,6 @@
-﻿#include "VirtualMemory.h"
+﻿#include <algorithm>
+
+#include "VirtualMemory.h"
 #include "PhysicalMemory.h"
 #include "Utils.h"
 
@@ -7,6 +9,14 @@
  *		 abbreviation for 'physical address' and 'va' as an abbreviation for
  *		 'virtual address'.
  */
+
+ // Return statuses
+typedef enum
+{
+	VM_FAILURE = 0,
+	VM_SUCCESS = 1
+
+} VMStatus;
 
 // The index of the frame for the page table tree root
 // (kept in physical memory at all times)
