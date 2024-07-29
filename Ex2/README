@@ -1,0 +1,69 @@
+LOGIN
+NAME (ID)
+EX: 2
+
+FILES:
+README -- This README, with answers to the theoretical part
+Makefile -- Makefile for the C/CPP source files
+thread.cpp -- Abstraction for a single user thread and its properties (CPP)
+thread.h -- Abstraction for a single user thread and its properties (Header)
+uthreads.cpp -- The primary library implementatio
+
+ANSWERS:
+
+Q1:
+a) sigsetjmp is a OS function for placing a "bookmark" in the code, it saves the state in which the 
+code is currently is (values of the registers, pointer to the stack, instruction pointer and so forth).
+siglongjmp is the complementary function of sigsetjmp in the manner that it is meant to jump to the
+bookmark specified by sigsetjmp, and hence restores the state which was saved by it.
+b) These functions affect the mask in a way that including the saved state provided by the normal setjmp/longjmp,
+the functions also saved and restore (accordingly, as described in A) the state of signal masking at the point of
+bookmark.
+
+Q2:
+For example, consider a system with limited resources, e.g. true multi-core concurrency isn't an option. 
+But, one must writea program which computes different independent computations, 
+for instance, it should compute some matrix multiplications, and also compute some gradients. 
+A good approach for this, would be that so the matrix multiplications reside in one
+thread, whilst the graident calculations reside in another thread. 
+User level threads fit this scenario nicely since the computations are independent, 
+the threads don't rely on one another, and more so, thread switching has less overhead
+(going through the kernel is not necessary for switching), and generally, the system has limited resources, 
+so multi-core computation is out of the question, therefore computing with user threads 
+would be most efficient resource-wise. Moreover, these threads don't require any IO resources, 
+so waiting asynchronously for the operating system is also unnecessary.
+
+Q3:
+There are only just multiple differences when comparing the task at hand between processes and 
+kernel-level threads, those are -
+
+Advantages:
+1) Isolated environment for each tab allow easier management of the tab within the code, 
+if the tab is an independent entity (if it isn't independent, then the first disadvantage 
+should be taken into consideration)
+2) Individualistic processes allow more control - For instance, managing the 
+priority of each individual tab (process).
+
+Disadvantages:
+1) If tabs require exchange of data, then Interprocess Communication is harder and more costly.
+2) OS overhead is generally higher managing each tab (process), therefore overall system bottlenecking is more likely.
+(switching run-time between processes, managing individual priorities, creation time)
+
+Q4:
+It all begins with the user typing the `kill` command in the bash shell. The Shell, which awaits for input from the user, 
+is therefore waiting for input from the Operating System. For each key the user presses, the Operating System, 
+via the dedicated device driver, receives the interrupt, which in turn, handles the keyboard IO interrupts and translates 
+them into meaningful textual data, which is handed over to the requesting process - the bash shell. 
+Therefore, once the user engages the `kill` command in the bash shell, the `kill` command, engages
+the `kill` subroutine (!!!) of the Operating System, the OS sends the SIGTERM signal to the target process 
+(as documented in `man kill`, this is the default behavior). 
+The target processes will choose how to handle this signal - It can block it, handle it in its own way, 
+or use the default behavior (unlike SIGKILL which just terminates the process without allowing the process to intervene).
+
+
+Q5:
+The real time is counted against the real-world time, that is, each second (or in even lower resolutions such 
+as nanoseconds) that passes in the real world, the real time in the Operating System will pass accordingly. 
+On the other hand, the virtual time is counted against the CPU run-time given to a process in question, 
+it isn't a global clock like the real time. So therefore, whenever a process doesn't receive run-time,
+the virtual time does not advance for that process, whilst the real time does.
