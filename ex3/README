@@ -1,0 +1,15 @@
+NAME (ID)
+EX: 3
+
+FILES:
+README -- This README
+Makefile -- Makefile for compiling the library and archiving
+Barrier.h -- A barrier object (Header)
+Barrier.cpp -- A RAII barrier object (Source)
+Mutex.h -- A RAII mutex object, with AutoLock complementary object (Header)
+Mutex.cpp -- A RAII mutex object, with AutoLock complementary object (Source)
+Semaphore.h -- A RAII semaphore object (Header)
+Semaphore.cpp -- A RAII semaphore object (Source)
+Job.h -- The primary logic, responsible for a single job in the map-reduce framework (Header)
+Job.cpp -- The primary logic, responsible for a single job in the map-reduce framework (Source)
+MapReduceFramework.cpp -- The library API for the Map-Reduce Framework (Source)
