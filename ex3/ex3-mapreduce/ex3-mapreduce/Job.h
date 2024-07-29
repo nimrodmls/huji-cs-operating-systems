@@ -119,6 +119,9 @@ private:
 	// Boolean flag to indicate whether the shuffle job has been assigned to one of the workers
 	std::atomic<bool> m_shuffleAssign;
 	std::vector<ThreadPtr> m_workers;
+	// The worker's context. These shall not be destroyed before
+	// all the threads terminate. And note that these will be destroyed
+	// upon the destruction of the job (these are unique pointers)
 	std::vector<WorkerContextUPtr> m_workers_context;
 	// The queue created by the shuffle stage (input of the reduce stage)
 	std::vector<IntermediateVec> m_shuffle_queue;
