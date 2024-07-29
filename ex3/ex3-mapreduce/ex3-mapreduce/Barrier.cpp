@@ -12,15 +12,20 @@ Barrier::Barrier(uint32_t numThreads) :
 
 Barrier::~Barrier()
 {
-	if (0 != pthread_mutex_destroy(&mutex)) 
+	try
 	{
-		Common::emit_system_error("pthread_mutex_destroy failed");
-	}
+		if (0 != pthread_mutex_destroy(&mutex)) 
+		{
+			Common::emit_system_error("pthread_mutex_destroy failed");
+		}
 
-	if (0 != pthread_cond_destroy(&cv))
-	{
-		Common::emit_system_error("pthread_cond_destroy failed");
+		if (0 != pthread_cond_destroy(&cv))
+		{
+			Common::emit_system_error("pthread_cond_destroy failed");
+		}
 	}
+	catch (...)
+	{}
 }
 
 

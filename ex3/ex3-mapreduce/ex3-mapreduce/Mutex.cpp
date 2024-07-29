@@ -29,5 +29,10 @@ AutoMutexLock::AutoMutexLock(MutexPtr& mutex) :
 
 AutoMutexLock::~AutoMutexLock()
 {
-	m_mutex->unlock();
+	try
+	{
+		m_mutex->unlock();
+	}
+	catch (...)
+	{}
 }

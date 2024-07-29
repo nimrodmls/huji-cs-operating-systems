@@ -81,13 +81,12 @@ void Job::add_worker()
 	// Allowing addition of workers only before the job has started
 	assert(UNDEFINED_STAGE == get_stage());
 
-	// Creating the worker's context
-	WorkerContext* worker_ctx = new WorkerContext(this);
-
 	// Initialize the worker thread
-	ThreadPtr worker = std::make_shared<Thread>(job_worker_thread, worker_ctx);
-	m_workers.push_back(worker);
-	m_workers_context.emplace_back(worker_ctx);
+	WorkerContextUPtr worker_ctx(new WorkerContext(this));
+	ThreadPtr worker = std::make_shared<Thread>(job_worker_thread, worker_ctx.get());
+
+	m_workers.emplace_back(std::move(worker));
+	m_workers_context.emplace_back(std::move(worker_ctx));
 }
 
 stage_t Job::get_stage() const
@@ -105,11 +104,8 @@ uint32_t Job::get_stage_total() const
 
 void Job::set_stage(stage_t new_stage, uint32_t total)
 {
-	// Clear the stage bits
-	//m_stage_status &= ~(0x3ULL << 62);
-	// Set the new stage bits
-	//m_stage_status |= (static_cast<uint64_t>(new_stage) << 62);
-	m_stage_status = (static_cast<uint64_t>(new_stage) << 62) | (static_cast<uint64_t>(total) << 31);
+	m_stage_status = (static_cast<uint64_t>(new_stage) << 62) | 
+					 (static_cast<uint64_t>(total) << 31);
 }
 
 uint32_t Job::inc_stage_processed(uint32_t val)

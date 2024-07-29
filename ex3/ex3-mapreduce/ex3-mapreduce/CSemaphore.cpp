@@ -7,10 +7,15 @@ CSemaphore::CSemaphore(uint32_t initial) :
 
 CSemaphore::~CSemaphore()
 {
-	if (0 != sem_destroy(&m_semaphore))
+	try
 	{
-		Common::emit_system_error("sem_destroy failed");
+		if (0 != sem_destroy(&m_semaphore))
+		{
+			Common::emit_system_error("sem_destroy failed");
+		}
 	}
+	catch (...)
+	{}
 }
 
 void CSemaphore::wait()
